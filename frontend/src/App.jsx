@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+
 import {
   Activity,
   BarChart3,
@@ -8,14 +9,14 @@ import {
   ChevronRight,
   LayoutDashboard,
   Newspaper,
-  Search,
   ShieldCheck,
   Wallet,
   Menu,
   X,
   LogOut,
   User,
-  Building2
+  Building2,
+  Sparkles
 } from "lucide-react";
 
 import MarketOverview from "./MarketOverview";
@@ -25,6 +26,7 @@ import Portfolio from "./Portfolio";
 import Auth from "./Auth";
 import StockDetails from "./StockDetails";
 import StockSearch from "./StockSearch";
+import LandingPage from "./LandingPage";
 
 const API = (
   import.meta.env.VITE_API_URL || "http://localhost:5000"
@@ -40,15 +42,6 @@ const navigation = [
   { id: "ai-intelligence", label: "AI Intelligence", icon: BrainCircuit }
 ];
 
-const popularStocks = [
-  { symbol: "RELIANCE", name: "Reliance Industries", exchange: "NSE" },
-  { symbol: "TCS", name: "Tata Consultancy Services", exchange: "NSE" },
-  { symbol: "INFY", name: "Infosys Limited", exchange: "NSE" },
-  { symbol: "HDFCBANK", name: "HDFC Bank", exchange: "NSE" },
-  { symbol: "ICICIBANK", name: "ICICI Bank", exchange: "NSE" },
-  { symbol: "SBIN", name: "State Bank of India", exchange: "NSE" }
-];
-
 function App() {
   const [authToken, setAuthToken] = useState(
     () => sessionStorage.getItem("stocksense_token")
@@ -56,6 +49,7 @@ function App() {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showLandingPage, setShowLandingPage] = useState(true);
 
   const [activeSection, setActiveSection] = useState("dashboard");
   const [searchSymbol, setSearchSymbol] = useState("");
@@ -72,6 +66,7 @@ function App() {
     sessionStorage.setItem("stocksense_token", token);
     setAuthToken(token);
     setCurrentUser(user);
+    setShowLandingPage(false);
   };
 
   useEffect(() => {
@@ -106,8 +101,7 @@ function App() {
 
     verifySession();
   }, []);
-
-  const handleLogout = async () => {
+    const handleLogout = async () => {
     const token = sessionStorage.getItem("stocksense_token");
 
     try {
@@ -123,7 +117,7 @@ function App() {
         );
       }
     } catch (error) {
-      console.error("Logout request failed:", error.message);
+      console.error("Logout failed:", error.message);
     } finally {
       sessionStorage.removeItem("stocksense_token");
       setAuthToken(null);
@@ -132,669 +126,596 @@ function App() {
       setSearchSymbol("");
       setNewsError("");
       setSelectedStock("RELIANCE");
+      setShowLandingPage(true);
     }
   };
 
-  const scrollToSection = (id) => {
-    setActiveSection(id);
+  const scrollToSection = (sectionId) => {
+    setActiveSection(sectionId);
     setMobileMenuOpen(false);
 
-    document.getElementById(id)?.scrollIntoView({
+    document.getElementById(sectionId)?.scrollIntoView({
       behavior: "smooth",
       block: "start"
     });
   };
 
-  const searchStock = async (symbol, shouldScroll = true) => {
-    const stock = String(symbol || "").trim().toUpperCase();
-
-    if (!stock) return;
-
-    setSearchSymbol(stock);
-    setLoadingNews(true);
-    setNewsError("");
-    setNews([]);
-    setNewsMode("original");
-
-    if (shouldScroll) {
-      scrollToSection("ai-intelligence");
-    }
-
-    try {
-      const response = await axios.get(`${API}/api/news`, {
-        params: {
-          symbol: stock
-        },
-        timeout: 30000
-      });
-
-      const articles = Array.isArray(response.data?.articles)
-        ? response.data.articles
-        : [];
-
-      setNews(articles);
-
-      if (articles.length === 0) {
-        setNewsError(`No recent news found for ${stock}.`);
-      }
-    } catch (error) {
-      setNewsError(
-        error.response?.data?.message ||
-        "Unable to fetch news. Please check your backend connection."
-      );
-    } finally {
-      setLoadingNews(false);
-    }
-  };
-
-  const openStockDetails = (symbol) => {
-    const stock = String(symbol || "").trim().toUpperCase();
-
-    if (!stock) return;
-
-    setSelectedStock(stock);
-    setSearchSymbol(stock);
-    setNews([]);
-    setNewsError("");
-    setNewsMode("original");
-
-    searchStock(stock, false);
-    scrollToSection("stock-details");
-  };
-
-  const handleStockSelect = (symbol, stock) => {
+  const searchStock = (symbol, shouldScroll = true) => {
     const normalizedSymbol = String(symbol || "").trim().toUpperCase();
 
     if (!normalizedSymbol) return;
 
-    const chartSymbol =
-      stock?.exchange === "BSE" && !normalizedSymbol.endsWith(".BO")
-        ? `${normalizedSymbol}.BO`
-        : normalizedSymbol;
-
-    setSelectedStock(chartSymbol);
+    setSelectedStock(normalizedSymbol);
     setSearchSymbol(normalizedSymbol);
-    setNews([]);
-    setNewsError("");
-    setNewsMode("original");
 
-    searchStock(normalizedSymbol, false);
+    if (shouldScroll) {
+      scrollToSection("stock-details");
+    }
+  };
+
+  const openStockDetails = (symbol) => {
+    setNewsMode("original");
+    searchStock(symbol, false);
     scrollToSection("stock-details");
   };
 
-  const analyzeNews = async () => {
-    const stock = searchSymbol.trim().toUpperCase();
+  const fetchNews = async (symbol = selectedStock) => {
+    const normalizedSymbol = String(symbol || "").trim().toUpperCase();
 
-    if (!stock || loadingNews) return;
+    if (!normalizedSymbol) return;
 
     setLoadingNews(true);
     setNewsError("");
-    setNewsMode("analysis");
+    setNews([]);
 
     try {
-      const response = await axios.get(`${API}/api/news/analyze`, {
-        params: {
-          symbol: stock,
-          refresh: true
-        },
-        timeout: 120000
+      const response = await axios.get(`${API}/api/news`, {
+        params: { symbol: normalizedSymbol }
       });
 
-      const articles = Array.isArray(response.data?.articles)
-        ? response.data.articles
-        : [];
-
-      setNews(articles);
-
-      if (articles.length === 0) {
-        setNewsError("No articles were available for AI analysis.");
-      }
+      setNews(response.data?.articles || []);
+      setNewsMode("original");
     } catch (error) {
       setNewsError(
         error.response?.data?.message ||
-        "AI analysis is temporarily unavailable. Please try again later."
+        "Unable to fetch news. Please try again."
       );
     } finally {
       setLoadingNews(false);
     }
   };
 
-  const renderNews = () => (
-    <div className="mt-6 space-y-4">
-      {news.map((article, index) => {
-        const analysis = article.analysis || null;
+  const analyzeNews = async () => {
+    setLoadingNews(true);
+    setNewsError("");
 
-        return (
-          <article
-            key={article._id || article.link || article.url || index}
-            className="rounded-xl border border-white/10 bg-[#080d18] p-4"
-          >
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span>{article.source || "News source"}</span>
+    try {
+      const response = await axios.get(`${API}/api/news/analyze`, {
+        params: { symbol: selectedStock }
+      });
 
-              {(article.date || article.publishedAt) && (
-                <>
-                  <span>·</span>
-                  <span>
-                    {new Date(
-                      article.date || article.publishedAt
-                    ).toLocaleString()}
-                  </span>
-                </>
-              )}
-            </div>
+      setNews(
+        response.data?.articles ||
+        response.data?.data?.articles ||
+        []
+      );
 
-            <h4 className="mt-2 font-semibold leading-6 text-slate-100">
-              {article.title || "Untitled news article"}
-            </h4>
+      setNewsMode("ai");
+    } catch (error) {
+      setNewsError(
+        error.response?.data?.message ||
+        "AI news analysis failed. Please try again."
+      );
+    } finally {
+      setLoadingNews(false);
+    }
+  };
 
-            {newsMode === "analysis" && analysis && (
-              <>
-                {analysis.simpleSummary && (
-                  <div className="mt-4 rounded-xl border border-cyan-400/10 bg-cyan-400/5 p-4">
-                    <p className="mb-2 text-xs font-semibold text-cyan-400">
-                      AI Summary
-                    </p>
+  const handleStockSearch = (event) => {
+    event.preventDefault();
 
-                    <p className="text-sm leading-6 text-slate-300">
-                      {analysis.simpleSummary}
-                    </p>
-                  </div>
-                )}
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {analysis.sentiment && (
-                    <span className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-slate-300">
-                      Sentiment: {analysis.sentiment}
-                    </span>
-                  )}
-
-                  {analysis.impact && (
-                    <span className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-slate-300">
-                      Impact: {analysis.impact}
-                    </span>
-                  )}
-                </div>
-
-                {analysis.sentimentReason && (
-                  <div className="mt-3">
-                    <p className="text-xs font-semibold text-cyan-400">
-                      Sentiment Reason
-                    </p>
-
-                    <p className="mt-1 text-sm leading-6 text-slate-400">
-                      {analysis.sentimentReason}
-                    </p>
-                  </div>
-                )}
-
-                {Array.isArray(analysis.keyRisks) &&
-                  analysis.keyRisks.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold text-amber-400">
-                        Key Risks
-                      </p>
-
-                      <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-400">
-                        {analysis.keyRisks.map((risk, riskIndex) => (
-                          <li key={riskIndex}>{risk}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-              </>
-            )}
-
-            {newsMode === "analysis" && !analysis && (
-              <p className="mt-3 text-xs text-amber-400">
-                AI analysis is not available for this article.
-              </p>
-            )}
-
-            {(article.link || article.url) && (
-              <a
-                href={article.link || article.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300"
-              >
-                Read original article
-                <ChevronRight size={14} />
-              </a>
-            )}
-          </article>
-        );
-      })}
-    </div>
-  );
+    if (searchSymbol.trim()) {
+      searchStock(searchSymbol);
+    }
+  };
 
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080d18]">
+      <div className="flex min-h-screen items-center justify-center bg-[#070b14] text-white">
         <div className="text-center">
-          <Activity
-            size={35}
-            className="mx-auto mb-4 animate-pulse text-cyan-400"
-          />
-
+          <Activity className="mx-auto mb-4 h-10 w-10 animate-pulse text-cyan-400" />
           <p className="text-sm text-slate-400">
-            Checking your session...
+            Loading StockSense AI...
           </p>
         </div>
       </div>
     );
   }
 
+  if (showLandingPage) {
+    return (
+      <LandingPage
+        onSignIn={() => setShowLandingPage(false)}
+        onStartFree={() => setShowLandingPage(false)}
+      />
+    );
+  }
+
   if (!authToken || !currentUser) {
     return <Auth onAuthSuccess={handleAuthSuccess} />;
   }
-    return (
-    <div className="min-h-screen bg-[#080d18] text-slate-100">
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-white/10 bg-[#0b1220] lg:flex">
-        <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-400">
-            <Activity size={23} />
-          </div>
 
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">
-              StockSense<span className="text-cyan-400"> AI</span>
-            </h1>
+  return (
+    <div className="min-h-screen bg-[#070b14] text-white">
+      <div className="flex min-h-screen">
+            <aside
+          className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-white/10 bg-[#0b1220] transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen ${
+            mobileMenuOpen
+              ? "translate-x-0"
+              : "-translate-x-full lg:translate-x-0"
+          }`}
+        >
+          <div className="flex h-20 items-center justify-between border-b border-white/10 px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-400">
+                <Activity size={23} />
+              </div>
 
-            <p className="text-xs text-slate-500">
-              Indian Market Intelligence
-            </p>
-          </div>
-        </div>
-
-        <div className="px-4 py-7">
-          <p className="mb-4 px-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Workspace
-          </p>
-
-          <nav className="space-y-2">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-              const active = activeSection === item.id;
-
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => scrollToSection(item.id)}
-                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm transition ${
-                    active
-                      ? "bg-cyan-400/10 font-semibold text-cyan-400"
-                      : "text-slate-400 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <Icon size={19} />
-                  {item.label}
-
-                  {active && (
-                    <ChevronRight size={16} className="ml-auto" />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="mt-auto p-5">
-          <div className="rounded-2xl border border-cyan-400/10 bg-cyan-400/5 p-4">
-            <div className="mb-2 flex items-center gap-2 text-cyan-400">
-              <ShieldCheck size={18} />
-              <span className="text-sm font-semibold">AI Powered</span>
-            </div>
-
-            <p className="text-xs leading-5 text-slate-400">
-              Understand market news and stock trends with AI-powered insights.
-            </p>
-          </div>
-
-          <p className="mt-5 text-center text-xs text-slate-600">
-            StockSense AI · Informational use
-          </p>
-        </div>
-      </aside>
-
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#080d18]/90 px-4 py-3 backdrop-blur-xl sm:px-8">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="rounded-lg p-2 text-slate-300 hover:bg-white/5 lg:hidden"
-              aria-label="Toggle navigation"
-            >
-              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
-            </button>
-
-            <div>
-              <h2 className="text-lg font-semibold">Market Dashboard</h2>
-
-              <p className="hidden text-xs text-slate-500 sm:block">
-                Indian stock market intelligence platform
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 sm:flex">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-
-              <span className="text-xs font-medium text-emerald-400">
-                System Online
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-              <User size={16} className="text-cyan-400" />
-
-              <span className="max-w-28 truncate text-sm text-slate-300">
-                {currentUser.name}
-              </span>
+              <div>
+                <h1 className="text-lg font-bold">
+                  StockSense <span className="text-cyan-400">AI</span>
+                </h1>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  Market Intelligence
+                </p>
+              </div>
             </div>
 
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-xl border border-red-400/20 px-3 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-slate-400 lg:hidden"
             >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Logout</span>
+              <X size={21} />
             </button>
           </div>
-        </header>
 
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-40 bg-[#080d18] p-5 pt-24 lg:hidden">
-            <nav className="space-y-2">
+          <div className="flex-1 overflow-y-auto px-4 py-6">
+            <p className="mb-4 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Workspace
+            </p>
+
+            <nav className="space-y-1">
               {navigation.map((item) => {
                 const Icon = item.icon;
+                const isActive = activeSection === item.id;
 
                 return (
                   <button
                     key={item.id}
                     onClick={() => scrollToSection(item.id)}
-                    className="flex w-full items-center gap-3 rounded-xl px-4 py-4 text-left text-slate-300 hover:bg-white/5"
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${
+                      isActive
+                        ? "bg-cyan-400/10 text-cyan-300"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                    }`}
                   >
-                    <Icon size={20} />
-                    {item.label}
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+
+                    {isActive && (
+                      <ChevronRight className="ml-auto" size={16} />
+                    )}
                   </button>
                 );
               })}
             </nav>
-          </div>
-        )}
 
-        <main className="mx-auto max-w-[1600px] space-y-12 px-4 py-8 sm:px-8">
-          <section id="dashboard" className="scroll-mt-28">
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#101e34] via-[#0d1728] to-[#101827] p-6 sm:p-10">
-              <div className="pointer-events-none absolute -right-20 -top-32 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
-
-              <div className="pointer-events-none absolute -bottom-40 right-1/3 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
-
-              <div className="relative max-w-3xl">
-                <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-medium text-cyan-300">
-                  <BrainCircuit size={14} />
-                  AI-Powered Market Intelligence
-                </div>
-
-                <h1 className="text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
-                  Make sense of the market.
-                  <span className="block text-cyan-400">
-                    Think beyond the numbers.
-                  </span>
-                </h1>
-
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
-                  Explore Indian stocks, track market movements, understand
-                  financial news and discover AI-generated insights in one
-                  dashboard.
-                </p>
-
-                <div className="mt-8 max-w-3xl">
-                  <StockSearch onSelectStock={handleStockSelect} />
-                </div>
-
-                <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span>Popular:</span>
-
-                  {["RELIANCE", "TCS", "INFY", "SBIN"].map((symbol) => (
-                    <button
-                      key={symbol}
-                      type="button"
-                      onClick={() => openStockDetails(symbol)}
-                      className="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-400"
-                    >
-                      {symbol}
-                    </button>
-                  ))}
-                </div>
+            <div className="mt-8 rounded-2xl border border-cyan-400/10 bg-gradient-to-br from-cyan-400/10 to-blue-500/5 p-4">
+              <div className="mb-3 flex items-center gap-2 text-cyan-300">
+                <ShieldCheck size={18} />
+                <span className="text-xs font-semibold">
+                  AI Risk Intelligence
+                </span>
               </div>
-            </div>
-          </section>
 
-          <section id="market-overview" className="scroll-mt-28">
-            <div className="mb-5 flex items-center gap-3">
-              <Activity className="text-cyan-400" size={22} />
-
-              <div>
-                <h2 className="text-xl font-bold">Market Overview</h2>
-
-                <p className="text-xs text-slate-500">
-                  NIFTY 50 and SENSEX performance
-                </p>
-              </div>
-            </div>
-
-            <MarketOverview />
-          </section>
-
-          <section className="scroll-mt-28">
-            <div className="mb-5">
-              <h2 className="text-xl font-bold">Popular Stocks</h2>
-
-              <p className="mt-1 text-xs text-slate-500">
-                Select a stock to explore its details
+              <p className="text-xs leading-5 text-slate-400">
+                Understand market news, sentiment and potential risks with AI.
               </p>
             </div>
+          </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {popularStocks.map((stock) => (
-                <button
-                  key={stock.symbol}
-                  onClick={() => openStockDetails(stock.symbol)}
-                  className="group flex items-center justify-between rounded-2xl border border-white/10 bg-[#0d1524] p-4 text-left transition hover:border-cyan-400/30 hover:bg-[#111e31]"
-                >
-                  <div>
-                    <p className="font-semibold text-white group-hover:text-cyan-400">
-                      {stock.symbol}
-                    </p>
+          <div className="border-t border-white/10 p-4">
+            <div className="mb-4 flex items-center gap-3 px-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-slate-200">
+                <User size={18} />
+              </div>
 
-                    <p className="mt-1 text-xs text-slate-500">
-                      {stock.name}
-                    </p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">
+                  {currentUser.name}
+                </p>
+                <p className="truncate text-xs text-slate-500">
+                  {currentUser.email}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400"
+            >
+              <LogOut size={18} />
+              Sign Out
+            </button>
+          </div>
+        </aside>
+
+        {mobileMenuOpen && (
+          <button
+            aria-label="Close navigation"
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          />
+        )}
+
+        <main className="min-w-0 flex-1">
+          <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#070b14]/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="rounded-lg border border-white/10 p-2 text-slate-300 lg:hidden"
+              >
+                <Menu size={20} />
+              </button>
+
+              <div>
+                <p className="text-xs text-slate-500">Welcome back</p>
+                <h2 className="text-sm font-semibold sm:text-base">
+                  {currentUser.name}
+                </h2>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              <span className="text-[10px] font-medium text-emerald-300 sm:text-xs">
+                Market Intelligence Active
+              </span>
+            </div>
+          </header>
+
+          <div className="mx-auto max-w-[1600px] space-y-10 px-4 pb-8 pt-8 sm:px-6 sm:pt-10 lg:px-8">
+            <section id="dashboard" className="scroll-mt-28">
+              <div className="relative isolate overflow-hidden rounded-3xl border border-cyan-400/15 bg-gradient-to-br from-[#101d35] via-[#0b1220] to-[#07101e] p-6 sm:p-10">
+                <div className="pointer-events-none absolute -right-24 -top-24 -z-10 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-32 left-1/3 -z-10 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
+
+                <div className="relative max-w-3xl">
+                  <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-semibold tracking-wider text-cyan-300">
+                    <Sparkles size={15} />
+                    YOUR AI MARKET COMMAND CENTER
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-slate-400">
-                      {stock.exchange}
+                  <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-6xl">
+                    Welcome back,
+                    <span className="block bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-400 bg-clip-text text-transparent">
+                      {currentUser.name}
                     </span>
+                  </h1>
 
-                    <ChevronRight
-                      size={17}
-                      className="text-slate-600 group-hover:text-cyan-400"
-                    />
+                  <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
+                    Go beyond market numbers. Explore Indian stocks,
+                    understand financial news and discover market insights
+                    powered by artificial intelligence.
+                  </p>
+
+                  <div className="mt-8 flex flex-wrap gap-3">
+                    <button
+                      onClick={() => scrollToSection("stock-details")}
+                      className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-6 py-3.5 font-bold text-slate-950 shadow-lg shadow-cyan-500/10 transition hover:-translate-y-1 hover:shadow-cyan-500/25"
+                    >
+                      Explore Stocks
+                      <ChevronRight size={18} />
+                    </button>
+
+                    <button
+                      onClick={() => scrollToSection("ai-intelligence")}
+                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 font-semibold text-white transition hover:-translate-y-1 hover:bg-white/10"
+                    >
+                      <BrainCircuit size={18} className="text-cyan-300" />
+                      Explore AI Intelligence
+                    </button>
                   </div>
-                </button>
-              ))}
-            </div>
-          </section>
+                </div>
 
-          <section id="stock-details" className="scroll-mt-28">
-            <div className="mb-5 flex items-center gap-3">
-              <Building2 className="text-cyan-400" size={22} />
+                <div className="relative mt-12 grid gap-4 sm:grid-cols-3">
+                  {[
+                    {
+                      title: "Market Overview",
+                      description: "Explore NIFTY 50 and SENSEX performance.",
+                      icon: Activity,
+                      section: "market-overview"
+                    },
+                    {
+                      title: "My Watchlist",
+                      description: "Keep your favourite stocks close.",
+                      icon: ChartCandlestick,
+                      section: "market-watch"
+                    },
+                    {
+                      title: "AI Intelligence",
+                      description: "Understand sentiment and financial news.",
+                      icon: BrainCircuit,
+                      section: "ai-intelligence"
+                    }
+                  ].map((item) => {
+                    const Icon = item.icon;
 
-              <div>
-                <h2 className="text-xl font-bold">Stock Details</h2>
+                    return (
+                      <button
+                        key={item.section}
+                        onClick={() => scrollToSection(item.section)}
+                        className="group rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-cyan-400/[0.06]"
+                      >
+                        <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-300 transition group-hover:scale-110">
+                          <Icon size={21} />
+                        </div>
 
-                <p className="text-xs text-slate-500">
-                  Detailed information about your selected stock
-                </p>
+                        <h3 className="font-bold text-white">
+                          {item.title}
+                        </h3>
+
+                        <p className="mt-2 text-xs leading-5 text-slate-400">
+                          {item.description}
+                        </p>
+
+                        <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-cyan-300">
+                          Explore
+                          <ChevronRight size={15} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
 
-            <StockDetails symbol={selectedStock} />
-          </section>
-
-          <section id="market-watch" className="scroll-mt-28">
-            <div className="mb-5 flex items-center gap-3">
-              <BarChart3 className="text-cyan-400" size={22} />
-
-              <div>
-                <h2 className="text-xl font-bold">Market Watch</h2>
-
-                <p className="text-xs text-slate-500">
-                  Track your selected stocks
-                </p>
-              </div>
-            </div>
-
-            <MarketWatch onSelectStock={openStockDetails} />
-          </section>
-
-          <section id="portfolio" className="scroll-mt-28">
-            <div className="mb-5 flex items-center gap-3">
-              <Wallet className="text-cyan-400" size={22} />
-
-              <div>
-                <h2 className="text-xl font-bold">My Portfolio</h2>
-
-                <p className="text-xs text-slate-500">
-                  Track holdings, invested value and profit or loss
-                </p>
-              </div>
-            </div>
-
-            <Portfolio />
-          </section>
-
-          <section id="advanced-charts" className="scroll-mt-28">
-            <div className="mb-5 flex items-center gap-3">
-              <ChartCandlestick className="text-cyan-400" size={22} />
-
-              <div>
-                <h2 className="text-xl font-bold">Advanced Charts</h2>
-
-                <p className="text-xs text-slate-500">
-                  Candlesticks, volume, moving averages and RSI
-                </p>
-              </div>
-            </div>
-
-            <CandlestickChart symbol={selectedStock} />
-          </section>
-                  <section id="ai-intelligence" className="scroll-mt-28">
-            <div className="mb-5 flex items-center gap-3">
-              <BrainCircuit className="text-cyan-400" size={22} />
-
-              <div>
-                <h2 className="text-xl font-bold">AI News Intelligence</h2>
-
-                <p className="text-xs text-slate-500">
-                  Understand the latest stock-related news
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-[#0d1524] p-5 sm:p-6">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                  <h3 className="font-semibold text-white">
-                    {searchSymbol
-                      ? `${searchSymbol} News Analysis`
-                      : "Stock News Analysis"}
-                  </h3>
-
-                  <p className="mt-1 text-xs text-slate-500">
-                    Fetch original news or generate AI-powered analysis.
+              <div id="market-overview" className="mt-8 scroll-mt-28">
+                <div className="mb-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">
+                    Market snapshot
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold">
+                    Indian Markets
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Latest available market index information
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => searchStock(searchSymbol)}
-                    disabled={!searchSymbol.trim() || loadingNews}
-                    className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/5 disabled:opacity-40"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Newspaper size={16} />
-                      Fetch News
-                    </span>
-                  </button>
+                <MarketOverview />
+              </div>
+            </section>  
+                        <section id="stock-details" className="scroll-mt-28">
+              <div className="mb-5">
+                <h2 className="text-xl font-bold">Stock Details</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Search and explore individual stocks
+                </p>
+              </div>
 
-                  <button
-                    type="button"
-                    onClick={analyzeNews}
-                    disabled={!searchSymbol.trim() || loadingNews}
-                    className="rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-40"
-                  >
-                    <span className="flex items-center gap-2">
-                      <BrainCircuit size={16} />
-                      AI Analyze
-                    </span>
-                  </button>
-                </div>
+              <form
+                onSubmit={handleStockSearch}
+                className="mb-6 flex flex-col gap-3 sm:flex-row"
+              >
+                <input
+                  value={searchSymbol}
+                  onChange={(event) => setSearchSymbol(event.target.value)}
+                  placeholder="Enter stock symbol, e.g. RELIANCE"
+                  className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/50"
+                />
+
+                <button
+                  type="submit"
+                  className="rounded-xl bg-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+                >
+                  Search Stock
+                </button>
+              </form>
+
+              <StockDetails symbol={selectedStock} />
+            </section>
+
+            <section id="market-watch" className="scroll-mt-28">
+              <div className="mb-5">
+                <h2 className="text-xl font-bold">Market Watch</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Your personal stock watchlist
+                </p>
+              </div>
+
+              <MarketWatch onSelectStock={openStockDetails} />
+            </section>
+
+            <section id="portfolio" className="scroll-mt-28">
+              <div className="mb-5">
+                <h2 className="text-xl font-bold">My Portfolio</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Track your personal holdings
+                </p>
+              </div>
+
+              <Portfolio />
+            </section>
+
+            <section id="advanced-charts" className="scroll-mt-28">
+              <div className="mb-5">
+                <h2 className="text-xl font-bold">Advanced Charts</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Technical charts and market indicators
+                </p>
+              </div>
+
+              <StockSearch
+                onSelectStock={(symbol) => openStockDetails(symbol)}
+              />
+
+              <div className="mt-6">
+                <CandlestickChart symbol={selectedStock} />
+              </div>
+            </section>
+
+            <section id="ai-intelligence" className="scroll-mt-28">
+              <div className="mb-5">
+                <h2 className="text-xl font-bold">AI News Intelligence</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Understand stock-related news with AI
+                </p>
+              </div>
+
+              <div className="mb-5 flex flex-wrap gap-3">
+                <button
+                  onClick={() => fetchNews()}
+                  disabled={loadingNews}
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  <Newspaper className="mr-2 inline" size={16} />
+                  Fetch Latest News
+                </button>
+
+                <button
+                  onClick={analyzeNews}
+                  disabled={loadingNews}
+                  className="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
+                >
+                  <BrainCircuit className="mr-2 inline" size={16} />
+                  Analyze with AI
+                </button>
+              </div>
+
+              <div className="mb-4 flex items-center gap-2 text-xs text-slate-400">
+                <span>Selected stock:</span>
+                <span className="rounded-md bg-white/5 px-2 py-1 font-semibold text-cyan-300">
+                  {selectedStock}
+                </span>
+                <span className="text-slate-600">|</span>
+                <span>
+                  {newsMode === "ai" ? "AI analyzed news" : "Original news"}
+                </span>
               </div>
 
               {loadingNews && (
-                <div className="mt-8 flex items-center justify-center gap-3 py-8 text-sm text-cyan-400">
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
-
-                  {newsMode === "analysis"
-                    ? "AI is analyzing stock news..."
-                    : "Fetching stock news..."}
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-sm text-slate-400">
+                  <Activity className="mx-auto mb-3 animate-pulse text-cyan-400" />
+                  Loading news...
                 </div>
               )}
 
-              {newsError && !loadingNews && (
-                <div className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-300">
+              {newsError && (
+                <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-4 text-sm text-red-300">
                   {newsError}
                 </div>
               )}
 
-              {!loadingNews && news.length === 0 && !newsError && (
-                <div className="mt-8 rounded-xl border border-dashed border-white/10 py-10 text-center">
-                  <Newspaper size={28} className="mx-auto text-slate-600" />
-
-                  <p className="mt-3 text-sm text-slate-400">
-                    No news loaded yet
+              {!loadingNews && !newsError && news.length === 0 && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center">
+                  <Newspaper className="mx-auto mb-3 text-slate-500" size={28} />
+                  <p className="text-sm text-slate-300">
+                    No news loaded yet.
                   </p>
-
-                  <p className="mt-1 text-xs text-slate-600">
-                    Select a stock or search a symbol above to get started.
+                  <p className="mt-1 text-xs text-slate-500">
+                    Fetch latest news or run AI analysis.
                   </p>
                 </div>
               )}
 
-              {!loadingNews && news.length > 0 && renderNews()}
-            </div>
-          </section>
+              {!loadingNews && news.length > 0 && (
+                <div className="space-y-4">
+                  {news.map((article, index) => {
+                    const analysis = article.analysis || {};
+                    const sentiment =
+                      analysis.sentiment ||
+                      article.sentiment ||
+                      article.originalSentiment ||
+                      "Neutral";
 
-          <footer className="border-t border-white/10 py-8 text-center">
-            <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-400">
-              <Activity size={17} className="text-cyan-400" />
-              StockSense AI
-            </div>
+                    return (
+                      <article
+                        key={article.id || article.link || index}
+                        className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+                      >
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs text-cyan-300">
+                            {article.source || article.publisher || "Market News"}
+                          </span>
 
-            <p className="mx-auto mt-3 max-w-3xl text-xs leading-6 text-slate-600">
-              StockSense AI is an informational and educational platform.
-              Market data may be delayed or incomplete. AI-generated summaries
-              may contain errors. This platform does not provide investment
-              advice, buy or sell recommendations, or guaranteed price
-              predictions. Always verify information independently.
-            </p>
-          </footer>
+                          <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300">
+                            {sentiment}
+                          </span>
+                        </div>
+
+                        <h3 className="font-semibold leading-6 text-white">
+                          {article.title || "Untitled news article"}
+                        </h3>
+
+                        <p className="mt-3 text-sm leading-6 text-slate-400">
+                          {analysis.summary ||
+                            article.summary ||
+                            article.description ||
+                            "No summary available."}
+                        </p>
+
+                        {analysis.reason && (
+                          <p className="mt-3 text-xs leading-5 text-slate-500">
+                            AI reasoning: {analysis.reason}
+                          </p>
+                        )}
+
+                        {Array.isArray(analysis.risks) &&
+                          analysis.risks.length > 0 && (
+                            <div className="mt-4">
+                              <p className="mb-2 text-xs font-semibold text-amber-300">
+                                Key risks
+                              </p>
+
+                              <ul className="list-inside list-disc space-y-1 text-xs text-slate-400">
+                                {analysis.risks.map((risk, riskIndex) => (
+                                  <li key={riskIndex}>{risk}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                        {article.link && (
+                          <a
+                            href={article.link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-cyan-300 hover:text-cyan-200"
+                          >
+                            Read original article
+                            <ChevronRight size={14} />
+                          </a>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <footer className="border-t border-white/10 py-6 text-center">
+              <p className="text-xs leading-5 text-slate-500">
+                StockSense AI provides informational market analysis only.
+                It does not provide investment advice or guarantee market data
+                accuracy. Verify information independently before making
+                financial decisions.
+              </p>
+
+              <p className="mt-2 text-xs text-slate-600">
+                © {new Date().getFullYear()} StockSense AI
+              </p>
+            </footer>
+          </div>
         </main>
       </div>
     </div>
