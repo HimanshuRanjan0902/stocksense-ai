@@ -16,42 +16,80 @@ export const analyzeStockNewsBatch = async (articles) => {
 
   const model = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
-  const prompt = `
-You are a financial news explainer for Indian stock market investors.
+  const articleData = articles.map((article, index) => ({
+    id: index,
+    title: article.title || "",
+    company: article.company || "",
+    news: article.summary || article.long_summary || ""
+  }));
 
-Analyze each article separately.
+  const prompt = `
+You are a careful financial news analyst specializing in Indian stock markets.
+
+Your task is to analyze each supplied news article independently.
+
+STRICT FACTUAL ACCURACY RULES:
+
+1. Analyze each article using only its own title, company name, and news content.
+2. Never use information from another article when analyzing an article.
+3. Never assume which company is affected by an event.
+4. Never introduce a company name unless it is explicitly mentioned in that article's supplied information.
+5. Never invent financial figures, dates, events, business relationships, or market reactions.
+6. If the article does not provide enough information, clearly say that the information is insufficient.
+7. Do not interpret general industry news as a confirmed event affecting a specific company.
+8. Do not claim that a company has gained or lost money unless the article explicitly supports that statement.
+9. Distinguish confirmed facts from possible implications.
+10. Do not make stock price predictions or give buy/sell recommendations.
+
+SUMMARY RULES:
+
+- Write exactly 3 short sentences.
+- Use simple English that beginners can understand.
+- Explain what happened, who is affected, and why it may matter.
+- Do not add information that is absent from the article.
+- If the article is unclear or incomplete, mention that limitation.
+
+SENTIMENT RULES:
+
+- positive: The article reports a clearly favorable development.
+- negative: The article reports a clearly unfavorable development.
+- neutral: The article is informational, mixed, uncertain, or does not establish a clear direction.
+
+IMPACT RULES:
+
+- low: Limited or indirect relevance to the company.
+- medium: A meaningful business or industry development.
+- high: A major confirmed development with potentially significant business consequences.
+
+KEY RISKS:
+- Return up to 2 risks.
+- Risks must be directly supported by the article.
+- Do not create generic risks unrelated to the article.
+- If no specific risk is established, return an empty array.
 
 ARTICLES:
-${JSON.stringify(
-    articles.map((article, index) => ({
-      id: index,
-      title: article.title || "Not available",
-      company: article.company || "Not available",
-      news: article.summary || article.long_summary || "Not available"
-    }))
-  )}
+${JSON.stringify(articleData)}
 
 Return ONLY valid JSON in this exact structure:
+
 {
   "results": [
     {
       "id": 0,
       "simpleSummary": "Exactly 3 short sentences.",
       "sentiment": "positive, negative, or neutral",
-      "sentimentReason": "Explain why in simple English.",
+      "sentimentReason": "A short explanation supported by the article.",
       "keyRisks": ["Risk 1", "Risk 2"],
       "impact": "low, medium, or high"
     }
   ]
 }
 
-Rules:
-- Return one result for every article.
-- Preserve each article's id.
-- Do not invent facts.
-- Mention uncertainty where appropriate.
-- Do not give buy or sell recommendations.
-- Base analysis only on the supplied article.
+FINAL VALIDATION:
+- Return exactly one result for every supplied article.
+- Preserve every article ID exactly.
+- Do not skip or duplicate IDs.
+- Do not mix facts between articles.
 - Return valid JSON without Markdown code fences.
 `;
 
@@ -63,7 +101,7 @@ Rules:
         content: prompt
       }
     ],
-    temperature: 0.2,
+    temperature: 0.1,
     response_format: {
       type: "json_object"
     }
@@ -82,7 +120,26 @@ Rules:
   }
 
   return articles.map((article, index) => {
-    const result = parsed.results.find(item => item.id === index);
+    const result = parsed.results.find(
+      (item) => item.id === index
+    );
+
+    if (!result) {
+      throw new Error(`Groq analysis missing for article ${index}`);
+    }
+
+    const validSentiments = ["positive", "negative", "neutral"];
+    const validImpacts = ["low", "medium", "high"];
+
+    if (
+      !validSentiments.includes(result.sentiment) ||
+      !validImpacts.includes(result.impact) ||
+      typeof result.simpleSummary !== "string" ||
+      typeof result.sentimentReason !== "string" ||
+      !Array.isArray(result.keyRisks)
+    ) {
+      throw new Error(`Invalid analysis for article ${index}`);
+    }
 
     return {
       title: article.title,
@@ -91,7 +148,7 @@ Rules:
       link: article.link,
       date: article.date,
       originalSentiment: article.sentiment,
-      analysis: result || null
+      analysis: result
     };
   });
 };
