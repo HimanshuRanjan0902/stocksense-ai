@@ -25,6 +25,26 @@ app.use(cors({
 
 app.use(express.json());
 
+const extractArticles = (response) => {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  if (Array.isArray(response?.articles)) {
+    return response.articles;
+  }
+
+  if (Array.isArray(response?.data?.data)) {
+    return response.data.data;
+  }
+
+  if (Array.isArray(response?.data)) {
+    return response.data;
+  }
+
+  return [];
+};
+
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -62,11 +82,15 @@ app.get("/api/news", async (req, res) => {
       });
     }
 
-    const news = await getStockNews(symbol);
+    const newsResponse = await getStockNews(symbol);
+    const articles = extractArticles(newsResponse);
+
+    console.log(`Returning ${articles.length} articles for ${symbol}`);
 
     res.json({
       success: true,
-      data: news
+      symbol,
+      articles
     });
   } catch (error) {
     console.error("News fetch error:", error.message);
@@ -110,12 +134,9 @@ app.get("/api/news/analyze", async (req, res) => {
     }
 
     const newsResponse = await getStockNews(symbol);
+    const articles = extractArticles(newsResponse);
 
-    const articles = Array.isArray(newsResponse)
-      ? newsResponse
-      : newsResponse.articles || newsResponse.data || [];
-
-    if (!Array.isArray(articles) || articles.length === 0) {
+    if (articles.length === 0) {
       return res.json({
         success: true,
         symbol,
@@ -137,7 +158,7 @@ app.get("/api/news/analyze", async (req, res) => {
         }
       },
       {
-        new: true,
+        returnDocument: "after",
         upsert: true,
         runValidators: true
       }
@@ -259,7 +280,7 @@ app.post("/api/portfolio", async (req, res) => {
         }
       },
       {
-        new: true,
+        returnDocument: "after",
         upsert: true
       }
     );
