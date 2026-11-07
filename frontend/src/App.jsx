@@ -47,6 +47,7 @@ function App() {
   const [news, setNews] = useState([]);
   const [loadingNews, setLoadingNews] = useState(false);
   const [newsError, setNewsError] = useState("");
+  const [newsMode, setNewsMode] = useState("original");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const scrollToSection = (id) => {
@@ -68,6 +69,7 @@ function App() {
     setLoadingNews(true);
     setNewsError("");
     setNews([]);
+    setNewsMode("original");
 
     scrollToSection("ai-intelligence");
 
@@ -76,7 +78,10 @@ function App() {
         params: { symbol: stock }
       });
 
-      const articles = response.data?.articles || [];
+      const articles = Array.isArray(response.data?.articles)
+        ? response.data.articles
+        : [];
+
       setNews(articles);
 
       if (articles.length === 0) {
@@ -97,6 +102,7 @@ function App() {
 
     setLoadingNews(true);
     setNewsError("");
+    setNewsMode("analysis");
 
     try {
       const response = await axios.get(`${API}/api/news/analyze`, {
@@ -106,7 +112,10 @@ function App() {
         }
       });
 
-      const articles = response.data?.articles || [];
+      const articles = Array.isArray(response.data?.articles)
+        ? response.data.articles
+        : [];
+
       setNews(articles);
 
       if (articles.length === 0) {
@@ -122,6 +131,112 @@ function App() {
     }
   };
 
+  const renderNews = () => (
+    <div className="mt-6 space-y-4">
+      {news.map((article, index) => {
+        const analysis = article.analysis || null;
+
+        return (
+          <article
+            key={article._id || article.link || article.url || index}
+            className="rounded-xl border border-white/10 bg-[#080d18] p-4"
+          >
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span>{article.source || "News source"}</span>
+
+              {(article.date || article.publishedAt) && (
+                <>
+                  <span>·</span>
+                  <span>
+                    {new Date(
+                      article.date || article.publishedAt
+                    ).toLocaleString()}
+                  </span>
+                </>
+              )}
+            </div>
+
+            <h4 className="mt-2 font-semibold leading-6 text-slate-100">
+              {article.title || "Untitled news article"}
+            </h4>
+
+            {newsMode === "analysis" && analysis && (
+              <>
+                {analysis.simpleSummary && (
+                  <div className="mt-4 rounded-xl border border-cyan-400/10 bg-cyan-400/5 p-4">
+                    <p className="mb-2 text-xs font-semibold text-cyan-400">
+                      AI Summary
+                    </p>
+                    <p className="text-sm leading-6 text-slate-300">
+                      {analysis.simpleSummary}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {analysis.sentiment && (
+                    <span className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-slate-300">
+                      Sentiment: {analysis.sentiment}
+                    </span>
+                  )}
+
+                  {analysis.impact && (
+                    <span className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-slate-300">
+                      Impact: {analysis.impact}
+                    </span>
+                  )}
+                </div>
+
+                {analysis.sentimentReason && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold text-cyan-400">
+                      Sentiment Reason
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-400">
+                      {analysis.sentimentReason}
+                    </p>
+                  </div>
+                )}
+
+                {Array.isArray(analysis.keyRisks) &&
+                  analysis.keyRisks.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs font-semibold text-amber-400">
+                        Key Risks
+                      </p>
+                      <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-400">
+                        {analysis.keyRisks.map((risk, riskIndex) => (
+                          <li key={riskIndex}>{risk}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+              </>
+            )}
+
+            {newsMode === "analysis" && !analysis && (
+              <p className="mt-3 text-xs text-amber-400">
+                AI analysis is not available for this article.
+              </p>
+            )}
+
+            {(article.link || article.url) && (
+              <a
+                href={article.link || article.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300"
+              >
+                Read original article
+                <ChevronRight size={14} />
+              </a>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#080d18] text-slate-100">
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-white/10 bg-[#0b1220] lg:flex">
@@ -133,7 +248,9 @@ function App() {
             <h1 className="text-xl font-bold tracking-tight">
               StockSense<span className="text-cyan-400"> AI</span>
             </h1>
-            <p className="text-xs text-slate-500">Indian Market Intelligence</p>
+            <p className="text-xs text-slate-500">
+              Indian Market Intelligence
+            </p>
           </div>
         </div>
 
@@ -159,7 +276,9 @@ function App() {
                 >
                   <Icon size={19} />
                   {item.label}
-                  {active && <ChevronRight size={16} className="ml-auto" />}
+                  {active && (
+                    <ChevronRight size={16} className="ml-auto" />
+                  )}
                 </button>
               );
             })}
@@ -274,7 +393,7 @@ function App() {
 
                   <button
                     type="submit"
-                    disabled={!searchSymbol.trim()}
+                    disabled={!searchSymbol.trim() || loadingNews}
                     className="rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Analyze Stock
@@ -403,7 +522,7 @@ function App() {
                       : "Stock News Analysis"}
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Search a stock to fetch its news and request AI analysis.
+                    Fetch original news or generate AI-powered analysis.
                   </p>
                 </div>
 
@@ -435,7 +554,9 @@ function App() {
               {loadingNews && (
                 <div className="mt-8 flex items-center justify-center gap-3 py-8 text-sm text-cyan-400">
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
-                  Processing stock news...
+                  {newsMode === "analysis"
+                    ? "AI is analyzing stock news..."
+                    : "Fetching stock news..."}
                 </div>
               )}
 
@@ -457,83 +578,7 @@ function App() {
                 </div>
               )}
 
-              {!loadingNews && news.length > 0 && (
-                <div className="mt-6 space-y-4">
-                  {news.map((article, index) => (
-                    <article
-                      key={article._id || article.url || index}
-                      className="rounded-xl border border-white/10 bg-[#080d18] p-4"
-                    >
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span>{article.source || "News source"}</span>
-                        {article.publishedAt && (
-                          <>
-                            <span>·</span>
-                            <span>
-                              {new Date(article.publishedAt).toLocaleString()}
-                            </span>
-                          </>
-                        )}
-                      </div>
-
-                      <h4 className="mt-2 font-semibold leading-6 text-slate-100">
-                        {article.title || "Untitled news article"}
-                      </h4>
-
-                      {article.simpleSummary && (
-                        <p className="mt-3 text-sm leading-6 text-slate-400">
-                          {article.simpleSummary}
-                        </p>
-                      )}
-
-                      {article.sentiment && (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-slate-300">
-                            Sentiment: {article.sentiment}
-                          </span>
-                          {article.impact && (
-                            <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-slate-300">
-                              Impact: {article.impact}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {article.sentimentReason && (
-                        <p className="mt-3 text-xs leading-5 text-slate-500">
-                          {article.sentimentReason}
-                        </p>
-                      )}
-
-                      {Array.isArray(article.keyRisks) &&
-                        article.keyRisks.length > 0 && (
-                          <div className="mt-3">
-                            <p className="text-xs font-semibold text-amber-400">
-                              Key risks
-                            </p>
-                            <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-slate-400">
-                              {article.keyRisks.map((risk, riskIndex) => (
-                                <li key={riskIndex}>{risk}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                      {article.url && (
-                        <a
-                          href={article.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300"
-                        >
-                          Read original article
-                          <ChevronRight size={14} />
-                        </a>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              )}
+              {!loadingNews && news.length > 0 && renderNews()}
             </div>
           </section>
 
