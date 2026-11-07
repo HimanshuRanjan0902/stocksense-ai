@@ -130,6 +130,8 @@ function App() {
       setCurrentUser(null);
       setNews([]);
       setSearchSymbol("");
+      setNewsError("");
+      setSelectedStock("RELIANCE");
     }
   };
 
@@ -143,16 +145,7 @@ function App() {
     });
   };
 
-  const openStockDetails = (symbol) => {
-    const stock = String(symbol || "").trim().toUpperCase();
-
-    if (!stock) return;
-
-    setSelectedStock(stock);
-    scrollToSection("stock-details");
-  };
-
-  const searchStock = async (symbol) => {
+  const searchStock = async (symbol, shouldScroll = true) => {
     const stock = String(symbol || "").trim().toUpperCase();
 
     if (!stock) return;
@@ -163,11 +156,16 @@ function App() {
     setNews([]);
     setNewsMode("original");
 
-    scrollToSection("ai-intelligence");
+    if (shouldScroll) {
+      scrollToSection("ai-intelligence");
+    }
 
     try {
       const response = await axios.get(`${API}/api/news`, {
-        params: { symbol: stock }
+        params: {
+          symbol: stock
+        },
+        timeout: 30000
       });
 
       const articles = Array.isArray(response.data?.articles)
@@ -182,15 +180,33 @@ function App() {
     } catch (error) {
       setNewsError(
         error.response?.data?.message ||
-        "Unable to fetch news. Please check your backend connection."
+          "Unable to fetch news. Please check your backend connection."
       );
     } finally {
       setLoadingNews(false);
     }
   };
 
+  const openStockDetails = (symbol) => {
+    const stock = String(symbol || "").trim().toUpperCase();
+
+    if (!stock) return;
+
+    setSelectedStock(stock);
+    setSearchSymbol(stock);
+    setNews([]);
+    setNewsError("");
+    setNewsMode("original");
+
+    searchStock(stock, false);
+
+    scrollToSection("stock-details");
+  };
+
   const analyzeNews = async () => {
-    if (!searchSymbol) return;
+    const stock = searchSymbol.trim().toUpperCase();
+
+    if (!stock || loadingNews) return;
 
     setLoadingNews(true);
     setNewsError("");
@@ -199,9 +215,10 @@ function App() {
     try {
       const response = await axios.get(`${API}/api/news/analyze`, {
         params: {
-          symbol: searchSymbol,
+          symbol: stock,
           refresh: true
-        }
+        },
+        timeout: 120000
       });
 
       const articles = Array.isArray(response.data?.articles)
@@ -216,7 +233,7 @@ function App() {
     } catch (error) {
       setNewsError(
         error.response?.data?.message ||
-        "AI analysis is temporarily unavailable. Please try again later."
+          "AI analysis is temporarily unavailable. Please try again later."
       );
     } finally {
       setLoadingNews(false);
@@ -340,6 +357,7 @@ function App() {
             size={35}
             className="mx-auto mb-4 animate-pulse text-cyan-400"
           />
+
           <p className="text-sm text-slate-400">
             Checking your session...
           </p>
@@ -364,6 +382,7 @@ function App() {
             <h1 className="text-xl font-bold tracking-tight">
               StockSense<span className="text-cyan-400"> AI</span>
             </h1>
+
             <p className="text-xs text-slate-500">
               Indian Market Intelligence
             </p>
@@ -433,6 +452,7 @@ function App() {
 
             <div>
               <h2 className="text-lg font-semibold">Market Dashboard</h2>
+
               <p className="hidden text-xs text-slate-500 sm:block">
                 Indian stock market intelligence platform
               </p>
@@ -442,6 +462,7 @@ function App() {
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 sm:flex">
               <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+
               <span className="text-xs font-medium text-emerald-400">
                 System Online
               </span>
@@ -449,6 +470,7 @@ function App() {
 
             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
               <User size={16} className="text-cyan-400" />
+
               <span className="max-w-28 truncate text-sm text-slate-300">
                 {currentUser.name}
               </span>
@@ -489,6 +511,7 @@ function App() {
           <section id="dashboard" className="scroll-mt-28">
             <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#101e34] via-[#0d1728] to-[#101827] p-6 sm:p-10">
               <div className="pointer-events-none absolute -right-20 -top-32 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
+
               <div className="pointer-events-none absolute -bottom-40 right-1/3 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
 
               <div className="relative max-w-3xl">
@@ -519,6 +542,7 @@ function App() {
                 >
                   <div className="flex flex-1 items-center gap-3 px-3">
                     <Search size={20} className="shrink-0 text-slate-500" />
+
                     <input
                       value={searchSymbol}
                       onChange={(event) => setSearchSymbol(event.target.value)}
@@ -542,6 +566,7 @@ function App() {
                   {["RELIANCE", "TCS", "INFY", "SBIN"].map((symbol) => (
                     <button
                       key={symbol}
+                      type="button"
                       onClick={() => searchStock(symbol)}
                       className="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-400"
                     >
@@ -556,8 +581,10 @@ function App() {
           <section id="market-overview" className="scroll-mt-28">
             <div className="mb-5 flex items-center gap-3">
               <Activity className="text-cyan-400" size={22} />
+
               <div>
                 <h2 className="text-xl font-bold">Market Overview</h2>
+
                 <p className="text-xs text-slate-500">
                   NIFTY 50 and SENSEX performance
                 </p>
@@ -570,6 +597,7 @@ function App() {
           <section className="scroll-mt-28">
             <div className="mb-5">
               <h2 className="text-xl font-bold">Popular Stocks</h2>
+
               <p className="mt-1 text-xs text-slate-500">
                 Select a stock to explore its details
               </p>
@@ -586,6 +614,7 @@ function App() {
                     <p className="font-semibold text-white group-hover:text-cyan-400">
                       {stock.symbol}
                     </p>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {stock.name}
                     </p>
@@ -595,7 +624,11 @@ function App() {
                     <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-slate-400">
                       {stock.exchange}
                     </span>
-                    <ChevronRight size={17} className="text-slate-600 group-hover:text-cyan-400" />
+
+                    <ChevronRight
+                      size={17}
+                      className="text-slate-600 group-hover:text-cyan-400"
+                    />
                   </div>
                 </button>
               ))}
@@ -605,8 +638,10 @@ function App() {
           <section id="stock-details" className="scroll-mt-28">
             <div className="mb-5 flex items-center gap-3">
               <Building2 className="text-cyan-400" size={22} />
+
               <div>
                 <h2 className="text-xl font-bold">Stock Details</h2>
+
                 <p className="text-xs text-slate-500">
                   Detailed information about your selected stock
                 </p>
@@ -619,22 +654,26 @@ function App() {
           <section id="market-watch" className="scroll-mt-28">
             <div className="mb-5 flex items-center gap-3">
               <BarChart3 className="text-cyan-400" size={22} />
+
               <div>
                 <h2 className="text-xl font-bold">Market Watch</h2>
+
                 <p className="text-xs text-slate-500">
                   Track your selected stocks
                 </p>
               </div>
             </div>
 
-          <MarketWatch onSelectStock={openStockDetails} />
+            <MarketWatch onSelectStock={openStockDetails} />
           </section>
 
           <section id="portfolio" className="scroll-mt-28">
             <div className="mb-5 flex items-center gap-3">
               <Wallet className="text-cyan-400" size={22} />
+
               <div>
                 <h2 className="text-xl font-bold">My Portfolio</h2>
+
                 <p className="text-xs text-slate-500">
                   Track holdings, invested value and profit or loss
                 </p>
@@ -647,21 +686,26 @@ function App() {
           <section id="advanced-charts" className="scroll-mt-28">
             <div className="mb-5 flex items-center gap-3">
               <ChartCandlestick className="text-cyan-400" size={22} />
+
               <div>
                 <h2 className="text-xl font-bold">Advanced Charts</h2>
+
                 <p className="text-xs text-slate-500">
                   Candlesticks, volume, moving averages and RSI
                 </p>
               </div>
             </div>
-<CandlestickChart symbol={selectedStock} />
+
+            <CandlestickChart symbol={selectedStock} />
           </section>
 
           <section id="ai-intelligence" className="scroll-mt-28">
             <div className="mb-5 flex items-center gap-3">
               <BrainCircuit className="text-cyan-400" size={22} />
+
               <div>
                 <h2 className="text-xl font-bold">AI News Intelligence</h2>
+
                 <p className="text-xs text-slate-500">
                   Understand the latest stock-related news
                 </p>
@@ -676,6 +720,7 @@ function App() {
                       ? `${searchSymbol} News Analysis`
                       : "Stock News Analysis"}
                   </h3>
+
                   <p className="mt-1 text-xs text-slate-500">
                     Fetch original news or generate AI-powered analysis.
                   </p>
@@ -683,6 +728,7 @@ function App() {
 
                 <div className="flex flex-wrap gap-2">
                   <button
+                    type="button"
                     onClick={() => searchStock(searchSymbol)}
                     disabled={!searchSymbol.trim() || loadingNews}
                     className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/5 disabled:opacity-40"
@@ -694,6 +740,7 @@ function App() {
                   </button>
 
                   <button
+                    type="button"
                     onClick={analyzeNews}
                     disabled={!searchSymbol.trim() || loadingNews}
                     className="rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-40"
@@ -709,6 +756,7 @@ function App() {
               {loadingNews && (
                 <div className="mt-8 flex items-center justify-center gap-3 py-8 text-sm text-cyan-400">
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+
                   {newsMode === "analysis"
                     ? "AI is analyzing stock news..."
                     : "Fetching stock news..."}
@@ -724,11 +772,13 @@ function App() {
               {!loadingNews && news.length === 0 && !newsError && (
                 <div className="mt-8 rounded-xl border border-dashed border-white/10 py-10 text-center">
                   <Newspaper size={28} className="mx-auto text-slate-600" />
+
                   <p className="mt-3 text-sm text-slate-400">
                     No news loaded yet
                   </p>
+
                   <p className="mt-1 text-xs text-slate-600">
-                    Search a stock symbol above to get started.
+                    Select a stock or search a symbol above to get started.
                   </p>
                 </div>
               )}

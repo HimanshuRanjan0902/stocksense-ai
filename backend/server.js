@@ -20,13 +20,32 @@ import Watchlist from "./models/Watchlist.js";
 const app = express();
 
 const PORT = process.env.PORT || 5000;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-app.use(cors({
-  origin: CLIENT_URL
-}));
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://stocksense-ai-delta.vercel.app",
+  process.env.CLIENT_URL
+].filter(Boolean);
 
-app.use(express.json());
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.error("CORS blocked origin:", origin);
+
+    return callback(new Error("Origin not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+
+app.use(cors(corsOptions));
+
+app.use(express.json({ limit: "1mb" }));
 
 app.use("/api/auth", authRoutes);
 
@@ -71,6 +90,8 @@ app.get("/api/ai/test", async (req, res) => {
       data: result
     });
   } catch (error) {
+    console.error("Gemini error:", error.message);
+
     res.status(500).json({
       success: false,
       message: error.message
@@ -130,7 +151,8 @@ app.get("/api/news/analyze", async (req, res) => {
 
     const oneHour = 60 * 60 * 1000;
 
-    const cacheIsFresh = cachedNews &&
+    const cacheIsFresh =
+      cachedNews &&
       Date.now() - new Date(cachedNews.fetchedAt).getTime() < oneHour;
 
     if (!forceRefresh && cacheIsFresh) {
@@ -525,6 +547,7 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`StockSense AI server running on port ${PORT}`);
+      console.log("Allowed frontend origins:", allowedOrigins);
     });
   } catch (error) {
     console.error("Server startup failed:", error.message);
