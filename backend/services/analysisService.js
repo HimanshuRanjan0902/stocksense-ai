@@ -1,18 +1,20 @@
 
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
 });
 
 export const analyzeStockNewsBatch = async (articles) => {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("Gemini API key is missing");
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("Groq API key is missing");
   }
 
   if (!Array.isArray(articles) || articles.length === 0) {
     return [];
   }
+
+  const model = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
   const prompt = `
 You are a financial news explainer for Indian stock market investors.
@@ -21,13 +23,13 @@ Analyze each article separately.
 
 ARTICLES:
 ${JSON.stringify(
-  articles.map((article, index) => ({
-    id: index,
-    title: article.title || "Not available",
-    company: article.company || "Not available",
-    news: article.summary || article.long_summary || "Not available"
-  }))
-)}
+    articles.map((article, index) => ({
+      id: index,
+      title: article.title || "Not available",
+      company: article.company || "Not available",
+      news: article.summary || article.long_summary || "Not available"
+    }))
+  )}
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -53,21 +55,30 @@ Rules:
 - Return valid JSON without Markdown code fences.
 `;
 
-  const response = await ai.models.generateContent({
-    model: process.env.GEMINI_MODEL,
-    contents: prompt
+  const response = await groq.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: "user",
+        content: prompt
+      }
+    ],
+    temperature: 0.2,
+    response_format: {
+      type: "json_object"
+    }
   });
 
-  const text = response.text.trim();
-  const cleanText = text
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/, "")
-    .replace(/\s*```$/, "");
+  const text = response.choices[0]?.message?.content;
 
-  const parsed = JSON.parse(cleanText);
+  if (!text) {
+    throw new Error("Groq returned an empty response");
+  }
+
+  const parsed = JSON.parse(text);
 
   if (!Array.isArray(parsed.results)) {
-    throw new Error("Invalid Gemini response format");
+    throw new Error("Invalid Groq response format");
   }
 
   return articles.map((article, index) => {
