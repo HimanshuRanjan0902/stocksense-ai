@@ -97,6 +97,9 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [dataSourceExchange, setDataSourceExchange] = useState("");
+  const [isFallback, setIsFallback] = useState(false);
+
   const [showSMA20, setShowSMA20] = useState(true);
   const [showSMA50, setShowSMA50] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
@@ -277,6 +280,8 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
     const fetchChartData = async () => {
       setLoading(true);
       setError("");
+      setDataSourceExchange("");
+      setIsFallback(false);
 
       try {
         const response = await axios.get(
@@ -287,7 +292,8 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
           }
         );
 
-        const data = response.data?.data?.data;
+        const responseData = response.data?.data;
+        const data = responseData?.data;
 
         if (!Array.isArray(data) || data.length === 0) {
           throw new Error("No chart data available");
@@ -339,6 +345,12 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
 
         if (!active) return;
 
+        setDataSourceExchange(
+          responseData?.dataSourceExchange || responseData?.exchange || ""
+        );
+
+        setIsFallback(responseData?.isFallback === true);
+
         candleSeriesRef.current?.setData(uniqueCandles);
         volumeSeriesRef.current?.setData(volumes);
         sma20Ref.current?.setData(calculateSMA(uniqueCandles, 20));
@@ -387,9 +399,20 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold">{symbol}</h2>
+
           <p className="mt-1 text-sm text-slate-400">
             Advanced technical analysis
           </p>
+
+          {dataSourceExchange && (
+            <div className="mt-2">
+              <span className="inline-flex rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs text-slate-300">
+                {isFallback
+                  ? "NSE historical data · BSE stock selected"
+                  : `${dataSourceExchange} historical data`}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -438,6 +461,7 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
       <div className="mt-6 border-t border-slate-800 pt-5">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-semibold">RSI (14)</h3>
+
           <span className="text-xs text-purple-400">
             Momentum Indicator
           </span>

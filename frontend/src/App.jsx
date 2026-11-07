@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import axios from "axios";
 import {
@@ -25,6 +24,7 @@ import CandlestickChart from "./CandlestickChart";
 import Portfolio from "./Portfolio";
 import Auth from "./Auth";
 import StockDetails from "./StockDetails";
+import StockSearch from "./StockSearch";
 
 const API = (
   import.meta.env.VITE_API_URL || "http://localhost:5000"
@@ -180,7 +180,7 @@ function App() {
     } catch (error) {
       setNewsError(
         error.response?.data?.message ||
-          "Unable to fetch news. Please check your backend connection."
+        "Unable to fetch news. Please check your backend connection."
       );
     } finally {
       setLoadingNews(false);
@@ -199,7 +199,26 @@ function App() {
     setNewsMode("original");
 
     searchStock(stock, false);
+    scrollToSection("stock-details");
+  };
 
+  const handleStockSelect = (symbol, stock) => {
+    const normalizedSymbol = String(symbol || "").trim().toUpperCase();
+
+    if (!normalizedSymbol) return;
+
+    const chartSymbol =
+      stock?.exchange === "BSE" && !normalizedSymbol.endsWith(".BO")
+        ? `${normalizedSymbol}.BO`
+        : normalizedSymbol;
+
+    setSelectedStock(chartSymbol);
+    setSearchSymbol(normalizedSymbol);
+    setNews([]);
+    setNewsError("");
+    setNewsMode("original");
+
+    searchStock(normalizedSymbol, false);
     scrollToSection("stock-details");
   };
 
@@ -233,7 +252,7 @@ function App() {
     } catch (error) {
       setNewsError(
         error.response?.data?.message ||
-          "AI analysis is temporarily unavailable. Please try again later."
+        "AI analysis is temporarily unavailable. Please try again later."
       );
     } finally {
       setLoadingNews(false);
@@ -369,8 +388,7 @@ function App() {
   if (!authToken || !currentUser) {
     return <Auth onAuthSuccess={handleAuthSuccess} />;
   }
-
-  return (
+    return (
     <div className="min-h-screen bg-[#080d18] text-slate-100">
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-white/10 bg-[#0b1220] lg:flex">
         <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
@@ -533,32 +551,9 @@ function App() {
                   dashboard.
                 </p>
 
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    searchStock(searchSymbol);
-                  }}
-                  className="mt-8 flex max-w-2xl flex-col gap-3 rounded-2xl border border-white/10 bg-[#080d18]/80 p-2 sm:flex-row"
-                >
-                  <div className="flex flex-1 items-center gap-3 px-3">
-                    <Search size={20} className="shrink-0 text-slate-500" />
-
-                    <input
-                      value={searchSymbol}
-                      onChange={(event) => setSearchSymbol(event.target.value)}
-                      placeholder="Search NSE symbol, e.g. RELIANCE, TCS, INFY"
-                      className="w-full bg-transparent py-3 text-sm text-white outline-none placeholder:text-slate-600"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={!searchSymbol.trim() || loadingNews}
-                    className="rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Analyze Stock
-                  </button>
-                </form>
+                <div className="mt-8 max-w-3xl">
+                  <StockSearch onSelectStock={handleStockSelect} />
+                </div>
 
                 <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span>Popular:</span>
@@ -567,7 +562,7 @@ function App() {
                     <button
                       key={symbol}
                       type="button"
-                      onClick={() => searchStock(symbol)}
+                      onClick={() => openStockDetails(symbol)}
                       className="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-400"
                     >
                       {symbol}
@@ -698,8 +693,7 @@ function App() {
 
             <CandlestickChart symbol={selectedStock} />
           </section>
-
-          <section id="ai-intelligence" className="scroll-mt-28">
+                  <section id="ai-intelligence" className="scroll-mt-28">
             <div className="mb-5 flex items-center gap-3">
               <BrainCircuit className="text-cyan-400" size={22} />
 

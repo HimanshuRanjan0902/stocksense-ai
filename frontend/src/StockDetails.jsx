@@ -26,8 +26,17 @@ function StockDetails({ symbol = "RELIANCE" }) {
     .trim()
     .toUpperCase();
 
+  const isBSE = selectedSymbol.endsWith(".BO");
+
+  const displaySymbol = selectedSymbol
+    .replace(/\.BO$/, "")
+    .replace(/\.NS$/, "");
+
+  const exchange = isBSE ? "BSE" : "NSE";
+
   const company = stockList.find(
-    (stock) => stock.symbol === selectedSymbol
+    (stock) =>
+      String(stock.symbol).toUpperCase() === displaySymbol
   );
 
   useEffect(() => {
@@ -58,14 +67,19 @@ function StockDetails({ symbol = "RELIANCE" }) {
 
         setPrices(data);
       } catch (err) {
-        if (err.name === "CanceledError") return;
+        if (
+          err.name === "CanceledError" ||
+          err.code === "ERR_CANCELED"
+        ) {
+          return;
+        }
 
         setPrices([]);
 
         setError(
           err.response?.data?.message ||
-            err.message ||
-            "Unable to load stock details."
+          err.message ||
+          "Unable to load stock details."
         );
       } finally {
         if (!controller.signal.aborted) {
@@ -90,6 +104,11 @@ function StockDetails({ symbol = "RELIANCE" }) {
   const changePercent = startingPrice
     ? (change / startingPrice) * 100
     : 0;
+
+  const hasPeriodChange =
+    prices.length > 1 &&
+    Number.isFinite(currentPrice) &&
+    Number.isFinite(startingPrice);
 
   const formatPrice = (value) => {
     const number = Number(value);
@@ -123,11 +142,11 @@ function StockDetails({ symbol = "RELIANCE" }) {
 
           <div>
             <h2 className="text-xl font-bold">
-              {company?.name || selectedSymbol}
+              {company?.name || displaySymbol}
             </h2>
 
             <p className="mt-1 text-sm text-slate-400">
-              NSE: {selectedSymbol}
+              {exchange}: {displaySymbol}
             </p>
           </div>
         </div>
@@ -161,7 +180,7 @@ function StockDetails({ symbol = "RELIANCE" }) {
           </p>
         </div>
 
-        {!loading && latest && Number.isFinite(change) && (
+        {!loading && latest && hasPeriodChange && (
           <div
             className={`flex items-center gap-2 text-sm font-semibold ${
               change >= 0 ? "text-green-400" : "text-red-400"

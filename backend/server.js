@@ -11,6 +11,7 @@ import { getStockPriceHistory } from "./services/stockPriceService.js";
 import { getMarketIndices } from "./services/marketIndexService.js";
 
 import authRoutes from "./routes/authRoutes.js";
+import stockRoutes from "./routes/stockRoutes.js";
 import { protect } from "./middleware/authMiddleware.js";
 
 import News from "./models/News.js";
@@ -18,7 +19,6 @@ import Portfolio from "./models/Portfolio.js";
 import Watchlist from "./models/Watchlist.js";
 
 const app = express();
-
 const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
@@ -35,7 +35,6 @@ const corsOptions = {
     }
 
     console.error("CORS blocked origin:", origin);
-
     return callback(new Error("Origin not allowed by CORS"));
   },
   credentials: true,
@@ -44,28 +43,16 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
 app.use(express.json({ limit: "1mb" }));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/stocks/list", stockRoutes);
 
 const extractArticles = (response) => {
-  if (Array.isArray(response)) {
-    return response;
-  }
-
-  if (Array.isArray(response?.articles)) {
-    return response.articles;
-  }
-
-  if (Array.isArray(response?.data?.data)) {
-    return response.data.data;
-  }
-
-  if (Array.isArray(response?.data)) {
-    return response.data;
-  }
-
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.articles)) return response.articles;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data)) return response.data;
   return [];
 };
 
@@ -148,7 +135,6 @@ app.get("/api/news/analyze", async (req, res) => {
     }
 
     const cachedNews = await News.findOne({ symbol });
-
     const oneHour = 60 * 60 * 1000;
 
     const cacheIsFresh =
@@ -265,7 +251,6 @@ app.get("/api/market/indices", async (req, res) => {
 app.get("/api/portfolio", protect, async (req, res) => {
   try {
     const userId = req.user._id.toString();
-
     const portfolio = await Portfolio.findOne({ userId });
 
     res.json({
@@ -315,9 +300,7 @@ app.post("/api/portfolio", protect, async (req, res) => {
     const portfolio = await Portfolio.findOneAndUpdate(
       { userId },
       {
-        $setOnInsert: {
-          userId
-        }
+        $setOnInsert: { userId }
       },
       {
         returnDocument: "after",
@@ -422,7 +405,6 @@ app.delete("/api/portfolio/:symbol", protect, async (req, res) => {
 app.get("/api/watchlist", protect, async (req, res) => {
   try {
     const userId = req.user._id.toString();
-
     const watchlist = await Watchlist.findOne({ userId });
 
     res.json({
@@ -478,7 +460,6 @@ app.post("/api/watchlist", protect, async (req, res) => {
     }
 
     watchlist.symbols.push(symbol);
-
     await watchlist.save();
 
     res.status(201).json({
