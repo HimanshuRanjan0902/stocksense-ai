@@ -9,7 +9,9 @@ import {
 } from "lightweight-charts";
 import { RefreshCw, Eye, EyeOff } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 const periods = ["1D", "1W", "1M", "3M", "1Y"];
 
@@ -19,6 +21,7 @@ function calculateSMA(data, period) {
       if (index < period - 1) return null;
 
       const slice = data.slice(index - period + 1, index + 1);
+
       const average =
         slice.reduce((sum, candle) => sum + candle.close, 0) / period;
 
@@ -39,6 +42,7 @@ function calculateRSI(data, period = 14) {
 
   for (let i = 1; i <= period; i++) {
     const change = data[i].close - data[i - 1].close;
+
     gains += Math.max(change, 0);
     losses += Math.max(-change, 0);
   }
@@ -291,14 +295,14 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
 
         const candles = data
           .filter(
-            item =>
+            (item) =>
               Number.isFinite(Number(item.open)) &&
               Number.isFinite(Number(item.high)) &&
               Number.isFinite(Number(item.low)) &&
               Number.isFinite(Number(item.close)) &&
               Number.isFinite(new Date(item.date).getTime())
           )
-          .map(item => ({
+          .map((item) => ({
             time: Math.floor(new Date(item.date).getTime() / 1000),
             open: Number(item.open),
             high: Number(item.high),
@@ -314,12 +318,12 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
 
         const volumes = data
           .filter(
-            item =>
+            (item) =>
               item.volume !== null &&
               item.volume !== undefined &&
               Number.isFinite(new Date(item.date).getTime())
           )
-          .map(item => ({
+          .map((item) => ({
             time: Math.floor(new Date(item.date).getTime() / 1000),
             value: Number(item.volume) || 0,
             color:
@@ -347,8 +351,8 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
         if (active) {
           setError(
             err.response?.data?.message ||
-            err.message ||
-            "Unable to load chart data"
+              err.message ||
+              "Unable to load chart data"
           );
         }
       } finally {
@@ -366,7 +370,7 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
   const toggleButton = (label, enabled, setter, color) => (
     <button
       type="button"
-      onClick={() => setter(previous => !previous)}
+      onClick={() => setter((previous) => !previous)}
       className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${
         enabled
           ? "border-slate-600 bg-slate-800 text-white"
@@ -389,7 +393,7 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {periods.map(item => (
+          {periods.map((item) => (
             <button
               type="button"
               key={item}

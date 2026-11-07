@@ -10,20 +10,25 @@ import { analyzeStockNewsBatch } from "./services/analysisService.js";
 import { getStockPriceHistory } from "./services/stockPriceService.js";
 import { getMarketIndices } from "./services/marketIndexService.js";
 
+import authRoutes from "./routes/authRoutes.js";
+import { protect } from "./middleware/authMiddleware.js";
+
 import News from "./models/News.js";
 import Portfolio from "./models/Portfolio.js";
+import Watchlist from "./models/Watchlist.js";
 
 const app = express();
 
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
-const DEMO_USER = "demo-user";
 
 app.use(cors({
   origin: CLIENT_URL
 }));
 
 app.use(express.json());
+
+app.use("/api/auth", authRoutes);
 
 const extractArticles = (response) => {
   if (Array.isArray(response)) {
@@ -43,6 +48,10 @@ const extractArticles = (response) => {
   }
 
   return [];
+};
+
+const isValidSymbol = (symbol) => {
+  return /^[A-Z0-9&.-]{1,30}$/.test(symbol);
 };
 
 app.get("/", (req, res) => {
@@ -75,7 +84,7 @@ app.get("/api/news", async (req, res) => {
       .trim()
       .toUpperCase();
 
-    if (!/^[A-Z0-9&.-]{1,30}$/.test(symbol)) {
+    if (!isValidSymbol(symbol)) {
       return res.status(400).json({
         success: false,
         message: "Invalid stock symbol"
@@ -110,7 +119,7 @@ app.get("/api/news/analyze", async (req, res) => {
 
     const forceRefresh = req.query.refresh === "true";
 
-    if (!/^[A-Z0-9&.-]{1,30}$/.test(symbol)) {
+    if (!isValidSymbol(symbol)) {
       return res.status(400).json({
         success: false,
         message: "Invalid stock symbol"
@@ -190,6 +199,13 @@ app.get("/api/stocks/prices", async (req, res) => {
       .trim()
       .toUpperCase();
 
+    if (!isValidSymbol(symbol)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid stock symbol"
+      });
+    }
+
     const result = await getStockPriceHistory(symbol, period);
 
     res.json({
@@ -224,11 +240,11 @@ app.get("/api/market/indices", async (req, res) => {
   }
 });
 
-app.get("/api/portfolio", async (req, res) => {
+app.get("/api/portfolio", protect, async (req, res) => {
   try {
-    const portfolio = await Portfolio.findOne({
-      userId: DEMO_USER
-    });
+    const userId = req.user._id.toString();
+
+    const portfolio = await Portfolio.findOne({ userId });
 
     res.json({
       success: true,
@@ -244,8 +260,10 @@ app.get("/api/portfolio", async (req, res) => {
   }
 });
 
-app.post("/api/portfolio", async (req, res) => {
+app.post("/api/portfolio", protect, async (req, res) => {
   try {
+    const userId = req.user._id.toString();
+
     const symbol = String(req.body.symbol || "")
       .trim()
       .toUpperCase();
@@ -253,7 +271,7 @@ app.post("/api/portfolio", async (req, res) => {
     const quantity = Number(req.body.quantity);
     const averagePrice = Number(req.body.averagePrice);
 
-    if (!/^[A-Z0-9&.-]{1,30}$/.test(symbol)) {
+    if (!isValidSymbol(symbol)) {
       return res.status(400).json({
         success: false,
         message: "Invalid stock symbol"
@@ -273,10 +291,10 @@ app.post("/api/portfolio", async (req, res) => {
     }
 
     const portfolio = await Portfolio.findOneAndUpdate(
-      { userId: DEMO_USER },
+      { userId },
       {
         $setOnInsert: {
-          userId: DEMO_USER
+          userId
         }
       },
       {
@@ -286,7 +304,7 @@ app.post("/api/portfolio", async (req, res) => {
     );
 
     const existingHolding = portfolio.holdings.find(
-      item => item.symbol === symbol
+      (item) => item.symbol === symbol
     );
 
     if (existingHolding) {
@@ -323,15 +341,22 @@ app.post("/api/portfolio", async (req, res) => {
   }
 });
 
-app.delete("/api/portfolio/:symbol", async (req, res) => {
+app.delete("/api/portfolio/:symbol", protect, async (req, res) => {
   try {
+    const userId = req.user._id.toString();
+
     const symbol = String(req.params.symbol)
       .trim()
       .toUpperCase();
 
-    const portfolio = await Portfolio.findOne({
-      userId: DEMO_USER
-    });
+    if (!isValidSymbol(symbol)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid stock symbol"
+      });
+    }
+
+    const portfolio = await Portfolio.findOne({ userId });
 
     if (!portfolio) {
       return res.status(404).json({
@@ -341,7 +366,7 @@ app.delete("/api/portfolio/:symbol", async (req, res) => {
     }
 
     const existingHolding = portfolio.holdings.some(
-      item => item.symbol === symbol
+      (item) => item.symbol === symbol
     );
 
     if (!existingHolding) {
@@ -352,7 +377,7 @@ app.delete("/api/portfolio/:symbol", async (req, res) => {
     }
 
     portfolio.holdings = portfolio.holdings.filter(
-      item => item.symbol !== symbol
+      (item) => item.symbol !== symbol
     );
 
     await portfolio.save();
@@ -368,6 +393,128 @@ app.delete("/api/portfolio/:symbol", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Unable to remove holding"
+    });
+  }
+});
+
+app.get("/api/watchlist", protect, async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+
+    const watchlist = await Watchlist.findOne({ userId });
+
+    res.json({
+      success: true,
+      symbols: watchlist?.symbols || []
+    });
+  } catch (error) {
+    console.error("Watchlist fetch error:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Unable to fetch watchlist"
+    });
+  }
+});
+
+app.post("/api/watchlist", protect, async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+
+    const symbol = String(req.body.symbol || "")
+      .trim()
+      .toUpperCase();
+
+    if (!isValidSymbol(symbol)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid stock symbol"
+      });
+    }
+
+    let watchlist = await Watchlist.findOne({ userId });
+
+    if (!watchlist) {
+      watchlist = new Watchlist({
+        userId,
+        symbols: []
+      });
+    }
+
+    if (watchlist.symbols.includes(symbol)) {
+      return res.status(409).json({
+        success: false,
+        message: "Stock already exists in watchlist"
+      });
+    }
+
+    if (watchlist.symbols.length >= 50) {
+      return res.status(400).json({
+        success: false,
+        message: "Maximum 50 stocks allowed"
+      });
+    }
+
+    watchlist.symbols.push(symbol);
+
+    await watchlist.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Stock added successfully",
+      symbols: watchlist.symbols
+    });
+  } catch (error) {
+    console.error("Watchlist update error:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Unable to update watchlist"
+    });
+  }
+});
+
+app.delete("/api/watchlist/:symbol", protect, async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+
+    const symbol = String(req.params.symbol)
+      .trim()
+      .toUpperCase();
+
+    if (!isValidSymbol(symbol)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid stock symbol"
+      });
+    }
+
+    const watchlist = await Watchlist.findOne({ userId });
+
+    if (!watchlist || !watchlist.symbols.includes(symbol)) {
+      return res.status(404).json({
+        success: false,
+        message: "Stock not found in watchlist"
+      });
+    }
+
+    watchlist.symbols = watchlist.symbols.filter(
+      (item) => item !== symbol
+    );
+
+    await watchlist.save();
+
+    res.json({
+      success: true,
+      message: "Stock removed successfully",
+      symbols: watchlist.symbols
+    });
+  } catch (error) {
+    console.error("Watchlist delete error:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Unable to remove stock"
     });
   }
 });

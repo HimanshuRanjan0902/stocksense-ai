@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import {
   Activity,
@@ -8,24 +8,32 @@ import {
   ChartCandlestick,
   ChevronRight,
   LayoutDashboard,
-  Menu,
   Newspaper,
   Search,
   ShieldCheck,
   Wallet,
-  X
+  Menu,
+  X,
+  LogOut,
+  User,
+  Building2
 } from "lucide-react";
 
 import MarketOverview from "./MarketOverview";
 import MarketWatch from "./MarketWatch";
 import CandlestickChart from "./CandlestickChart";
 import Portfolio from "./Portfolio";
+import Auth from "./Auth";
+import StockDetails from "./StockDetails";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API = (
+  import.meta.env.VITE_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 const navigation = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "market-overview", label: "Market Overview", icon: Activity },
+  { id: "stock-details", label: "Stock Details", icon: Building2 },
   { id: "market-watch", label: "Market Watch", icon: BarChart3 },
   { id: "portfolio", label: "My Portfolio", icon: Wallet },
   { id: "advanced-charts", label: "Advanced Charts", icon: ChartCandlestick },
@@ -42,13 +50,88 @@ const popularStocks = [
 ];
 
 function App() {
+  const [authToken, setAuthToken] = useState(
+    () => sessionStorage.getItem("stocksense_token")
+  );
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [activeSection, setActiveSection] = useState("dashboard");
   const [searchSymbol, setSearchSymbol] = useState("");
+  const [selectedStock, setSelectedStock] = useState("RELIANCE");
+
   const [news, setNews] = useState([]);
   const [loadingNews, setLoadingNews] = useState(false);
   const [newsError, setNewsError] = useState("");
   const [newsMode, setNewsMode] = useState("original");
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleAuthSuccess = ({ token, user }) => {
+    sessionStorage.setItem("stocksense_token", token);
+    setAuthToken(token);
+    setCurrentUser(user);
+  };
+
+  useEffect(() => {
+    const verifySession = async () => {
+      const token = sessionStorage.getItem("stocksense_token");
+
+      if (!token) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const response = await axios.get(
+          `${API}/api/auth/profile`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+
+        setCurrentUser(response.data.user);
+        setAuthToken(token);
+      } catch {
+        sessionStorage.removeItem("stocksense_token");
+        setAuthToken(null);
+        setCurrentUser(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    verifySession();
+  }, []);
+
+  const handleLogout = async () => {
+    const token = sessionStorage.getItem("stocksense_token");
+
+    try {
+      if (token) {
+        await axios.post(
+          `${API}/api/auth/logout`,
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+      }
+    } catch (error) {
+      console.error("Logout request failed:", error.message);
+    } finally {
+      sessionStorage.removeItem("stocksense_token");
+      setAuthToken(null);
+      setCurrentUser(null);
+      setNews([]);
+      setSearchSymbol("");
+    }
+  };
 
   const scrollToSection = (id) => {
     setActiveSection(id);
@@ -58,6 +141,15 @@ function App() {
       behavior: "smooth",
       block: "start"
     });
+  };
+
+  const openStockDetails = (symbol) => {
+    const stock = String(symbol || "").trim().toUpperCase();
+
+    if (!stock) return;
+
+    setSelectedStock(stock);
+    scrollToSection("stock-details");
   };
 
   const searchStock = async (symbol) => {
@@ -167,6 +259,7 @@ function App() {
                     <p className="mb-2 text-xs font-semibold text-cyan-400">
                       AI Summary
                     </p>
+
                     <p className="text-sm leading-6 text-slate-300">
                       {analysis.simpleSummary}
                     </p>
@@ -192,6 +285,7 @@ function App() {
                     <p className="text-xs font-semibold text-cyan-400">
                       Sentiment Reason
                     </p>
+
                     <p className="mt-1 text-sm leading-6 text-slate-400">
                       {analysis.sentimentReason}
                     </p>
@@ -204,6 +298,7 @@ function App() {
                       <p className="text-xs font-semibold text-amber-400">
                         Key Risks
                       </p>
+
                       <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-400">
                         {analysis.keyRisks.map((risk, riskIndex) => (
                           <li key={riskIndex}>{risk}</li>
@@ -237,6 +332,26 @@ function App() {
     </div>
   );
 
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#080d18]">
+        <div className="text-center">
+          <Activity
+            size={35}
+            className="mx-auto mb-4 animate-pulse text-cyan-400"
+          />
+          <p className="text-sm text-slate-400">
+            Checking your session...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authToken || !currentUser) {
+    return <Auth onAuthSuccess={handleAuthSuccess} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#080d18] text-slate-100">
       <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-white/10 bg-[#0b1220] lg:flex">
@@ -244,6 +359,7 @@ function App() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-400">
             <Activity size={23} />
           </div>
+
           <div>
             <h1 className="text-xl font-bold tracking-tight">
               StockSense<span className="text-cyan-400"> AI</span>
@@ -276,6 +392,7 @@ function App() {
                 >
                   <Icon size={19} />
                   {item.label}
+
                   {active && (
                     <ChevronRight size={16} className="ml-auto" />
                   )}
@@ -291,10 +408,12 @@ function App() {
               <ShieldCheck size={18} />
               <span className="text-sm font-semibold">AI Powered</span>
             </div>
+
             <p className="text-xs leading-5 text-slate-400">
               Understand market news and stock trends with AI-powered insights.
             </p>
           </div>
+
           <p className="mt-5 text-center text-xs text-slate-600">
             StockSense AI · Informational use
           </p>
@@ -302,7 +421,7 @@ function App() {
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-white/10 bg-[#080d18]/90 px-4 backdrop-blur-xl sm:px-8">
+        <header className="sticky top-0 z-30 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#080d18]/90 px-4 py-3 backdrop-blur-xl sm:px-8">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -320,11 +439,28 @@ function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-2">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-            <span className="text-xs font-medium text-emerald-400">
-              System Online
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 sm:flex">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              <span className="text-xs font-medium text-emerald-400">
+                System Online
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+              <User size={16} className="text-cyan-400" />
+              <span className="max-w-28 truncate text-sm text-slate-300">
+                {currentUser.name}
+              </span>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 rounded-xl border border-red-400/20 px-3 py-2 text-sm text-red-400 transition hover:bg-red-400/10"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
           </div>
         </header>
 
@@ -402,6 +538,7 @@ function App() {
 
                 <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span>Popular:</span>
+
                   {["RELIANCE", "TCS", "INFY", "SBIN"].map((symbol) => (
                     <button
                       key={symbol}
@@ -426,6 +563,7 @@ function App() {
                 </p>
               </div>
             </div>
+
             <MarketOverview />
           </section>
 
@@ -433,7 +571,7 @@ function App() {
             <div className="mb-5">
               <h2 className="text-xl font-bold">Popular Stocks</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Select a stock to explore its recent news
+                Select a stock to explore its details
               </p>
             </div>
 
@@ -441,7 +579,7 @@ function App() {
               {popularStocks.map((stock) => (
                 <button
                   key={stock.symbol}
-                  onClick={() => searchStock(stock.symbol)}
+                  onClick={() => openStockDetails(stock.symbol)}
                   className="group flex items-center justify-between rounded-2xl border border-white/10 bg-[#0d1524] p-4 text-left transition hover:border-cyan-400/30 hover:bg-[#111e31]"
                 >
                   <div>
@@ -452,6 +590,7 @@ function App() {
                       {stock.name}
                     </p>
                   </div>
+
                   <div className="flex items-center gap-2">
                     <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-slate-400">
                       {stock.exchange}
@@ -461,6 +600,20 @@ function App() {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section id="stock-details" className="scroll-mt-28">
+            <div className="mb-5 flex items-center gap-3">
+              <Building2 className="text-cyan-400" size={22} />
+              <div>
+                <h2 className="text-xl font-bold">Stock Details</h2>
+                <p className="text-xs text-slate-500">
+                  Detailed information about your selected stock
+                </p>
+              </div>
+            </div>
+
+            <StockDetails symbol={selectedStock} />
           </section>
 
           <section id="market-watch" className="scroll-mt-28">
@@ -473,7 +626,8 @@ function App() {
                 </p>
               </div>
             </div>
-            <MarketWatch />
+
+          <MarketWatch onSelectStock={openStockDetails} />
           </section>
 
           <section id="portfolio" className="scroll-mt-28">
@@ -486,6 +640,7 @@ function App() {
                 </p>
               </div>
             </div>
+
             <Portfolio />
           </section>
 
@@ -499,7 +654,7 @@ function App() {
                 </p>
               </div>
             </div>
-            <CandlestickChart />
+<CandlestickChart symbol={selectedStock} />
           </section>
 
           <section id="ai-intelligence" className="scroll-mt-28">
@@ -587,6 +742,7 @@ function App() {
               <Activity size={17} className="text-cyan-400" />
               StockSense AI
             </div>
+
             <p className="mx-auto mt-3 max-w-3xl text-xs leading-6 text-slate-600">
               StockSense AI is an informational and educational platform.
               Market data may be delayed or incomplete. AI-generated summaries

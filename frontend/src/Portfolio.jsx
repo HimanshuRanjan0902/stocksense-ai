@@ -12,6 +12,17 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+const getAuthConfig = () => {
+  const token = sessionStorage.getItem("stocksense_token");
+
+  return {
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    timeout: 15000
+  };
+};
+
 function Portfolio() {
   const [holdings, setHoldings] = useState([]);
   const [prices, setPrices] = useState({});
@@ -28,9 +39,16 @@ function Portfolio() {
     setError("");
 
     try {
-      const response = await axios.get(`${API_URL}/api/portfolio`, {
-        timeout: 15000
-      });
+      const config = getAuthConfig();
+
+      if (!config.headers.Authorization || config.headers.Authorization === "Bearer null") {
+        throw new Error("Please login again to access your portfolio.");
+      }
+
+      const response = await axios.get(
+        `${API_URL}/api/portfolio`,
+        config
+      );
 
       const items = response.data?.holdings || [];
 
@@ -78,11 +96,15 @@ function Portfolio() {
 
       setPrices(priceMap);
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        "Unable to load portfolio."
-      );
+      if (err.response?.status === 401) {
+        setError("Your session has expired. Please logout and login again.");
+      } else {
+        setError(
+          err.response?.data?.message ||
+          err.message ||
+          "Unable to load portfolio."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -120,11 +142,15 @@ function Portfolio() {
     setSaving(true);
 
     try {
-      await axios.post(`${API_URL}/api/portfolio`, {
-        symbol: stock,
-        quantity: qty,
-        averagePrice: price
-      });
+      await axios.post(
+        `${API_URL}/api/portfolio`,
+        {
+          symbol: stock,
+          quantity: qty,
+          averagePrice: price
+        },
+        getAuthConfig()
+      );
 
       setSymbol("");
       setQuantity("");
@@ -133,11 +159,15 @@ function Portfolio() {
 
       await fetchPortfolio();
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        "Unable to add stock."
-      );
+      if (err.response?.status === 401) {
+        setError("Your session has expired. Please login again.");
+      } else {
+        setError(
+          err.response?.data?.message ||
+          err.message ||
+          "Unable to add stock."
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -149,18 +179,23 @@ function Portfolio() {
 
     try {
       await axios.delete(
-        `${API_URL}/api/portfolio/${encodeURIComponent(stock)}`
+        `${API_URL}/api/portfolio/${encodeURIComponent(stock)}`,
+        getAuthConfig()
       );
 
       setMessage(`${stock} removed from portfolio.`);
 
       await fetchPortfolio();
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        "Unable to remove stock."
-      );
+      if (err.response?.status === 401) {
+        setError("Your session has expired. Please login again.");
+      } else {
+        setError(
+          err.response?.data?.message ||
+          err.message ||
+          "Unable to remove stock."
+        );
+      }
     }
   };
 
