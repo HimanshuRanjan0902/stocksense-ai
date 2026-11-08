@@ -21,7 +21,6 @@ function calculateSMA(data, period) {
       if (index < period - 1) return null;
 
       const slice = data.slice(index - period + 1, index + 1);
-
       const average =
         slice.reduce((sum, candle) => sum + candle.close, 0) / period;
 
@@ -42,7 +41,6 @@ function calculateRSI(data, period = 14) {
 
   for (let i = 1; i <= period; i++) {
     const change = data[i].close - data[i - 1].close;
-
     gains += Math.max(change, 0);
     losses += Math.max(-change, 0);
   }
@@ -53,7 +51,6 @@ function calculateRSI(data, period = 14) {
   const getRSI = () => {
     if (averageGain === 0 && averageLoss === 0) return 50;
     if (averageLoss === 0) return 100;
-
     return 100 - 100 / (1 + averageGain / averageLoss);
   };
 
@@ -80,18 +77,118 @@ function calculateRSI(data, period = 14) {
   return result;
 }
 
+function calculateEMA(data, period) {
+  if (data.length < period) return [];
+
+  const multiplier = 2 / (period + 1);
+  const result = [];
+
+  let ema =
+    data.slice(0, period).reduce((sum, item) => sum + item.close, 0) /
+    period;
+
+  result.push({
+    time: data[period - 1].time,
+    value: ema
+  });
+
+  for (let i = period; i < data.length; i++) {
+    ema = data[i].close * multiplier + ema * (1 - multiplier);
+
+    result.push({
+      time: data[i].time,
+      value: ema
+    });
+  }
+
+  return result;
+}
+
+function calculateMACD(data) {
+  const fastEMA = calculateEMA(data, 12);
+  const slowEMA = calculateEMA(data, 26);
+
+  const slowMap = new Map(
+    slowEMA.map((item) => [item.time, item.value])
+  );
+
+  const macdLine = fastEMA
+    .filter((item) => slowMap.has(item.time))
+    .map((item) => ({
+      time: item.time,
+      value: item.value - slowMap.get(item.time)
+    }));
+
+  if (macdLine.length < 9) {
+    return {
+      macd: [],
+      signal: [],
+      histogram: []
+    };
+  }
+
+  const multiplier = 2 / 10;
+  const signal = [];
+
+  let signalEMA =
+    macdLine.slice(0, 9).reduce((sum, item) => sum + item.value, 0) / 9;
+
+  signal.push({
+    time: macdLine[8].time,
+    value: signalEMA
+  });
+
+  for (let i = 9; i < macdLine.length; i++) {
+    signalEMA =
+      macdLine[i].value * multiplier +
+      signalEMA * (1 - multiplier);
+
+    signal.push({
+      time: macdLine[i].time,
+      value: signalEMA
+    });
+  }
+
+  const signalMap = new Map(
+    signal.map((item) => [item.time, item.value])
+  );
+
+  const histogram = macdLine
+    .filter((item) => signalMap.has(item.time))
+    .map((item) => ({
+      time: item.time,
+      value: item.value - signalMap.get(item.time),
+      color:
+        item.value >= signalMap.get(item.time)
+          ? "rgba(34, 197, 94, 0.7)"
+          : "rgba(239, 68, 68, 0.7)"
+    }));
+
+  return {
+    macd: macdLine,
+    signal,
+    histogram
+  };
+}
+
 function CandlestickChart({ symbol = "RELIANCE" }) {
   const chartContainerRef = useRef(null);
   const rsiContainerRef = useRef(null);
+  const macdContainerRef = useRef(null);
 
   const chartRef = useRef(null);
   const rsiChartRef = useRef(null);
+  const macdChartRef = useRef(null);
 
   const candleSeriesRef = useRef(null);
   const volumeSeriesRef = useRef(null);
   const sma20Ref = useRef(null);
   const sma50Ref = useRef(null);
   const rsiSeriesRef = useRef(null);
+
+  const macdLineRef = useRef(null);
+  const signalLineRef = useRef(null);
+  const macdHistogramRef = useRef(null);
 
   const [period, setPeriod] = useState("1M");
   const [loading, setLoading] = useState(false);
@@ -104,9 +201,16 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
   const [showSMA50, setShowSMA50] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
   const [showRSI, setShowRSI] = useState(true);
+  const [showMACD, setShowMACD] = useState(true);
 
   useEffect(() => {
-    if (!chartContainerRef.current || !rsiContainerRef.current) return;
+    if (
+      !chartContainerRef.current ||
+      !rsiContainerRef.current ||
+      !macdContainerRef.current
+    ) {
+      return;
+    }
 
     const chartOptions = {
       layout: {
@@ -212,14 +316,58 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
       title: "30"
     });
 
+    const macdChart = createChart(macdContainerRef.current, {
+      ...chartOptions,
+      width: macdContainerRef.current.clientWidth,
+      height: 180,
+      rightPriceScale: {
+        borderColor: "#334155"
+      }
+    });
+
+    const macdHistogram = macdChart.addSeries(HistogramSeries, {
+      priceLineVisible: false,
+      lastValueVisible: false,
+      base: 0
+    });
+
+    const macdLine = macdChart.addSeries(LineSeries, {
+      color: "#38bdf8",
+      lineWidth: 2,
+      title: "MACD",
+      priceLineVisible: false,
+      lastValueVisible: true
+    });
+
+    const signalLine = macdChart.addSeries(LineSeries, {
+      color: "#f59e0b",
+      lineWidth: 2,
+      title: "Signal",
+      priceLineVisible: false,
+      lastValueVisible: true
+    });
+
+    macdLine.createPriceLine({
+      price: 0,
+      color: "#64748b",
+      lineWidth: 1,
+      lineStyle: 2,
+      title: "Zero"
+    });
+
     chartRef.current = chart;
     rsiChartRef.current = rsiChart;
+    macdChartRef.current = macdChart;
 
     candleSeriesRef.current = candles;
     volumeSeriesRef.current = volume;
     sma20Ref.current = sma20;
     sma50Ref.current = sma50;
     rsiSeriesRef.current = rsi;
+
+    macdLineRef.current = macdLine;
+    signalLineRef.current = signalLine;
+    macdHistogramRef.current = macdHistogram;
 
     const resizeObserver = new ResizeObserver(() => {
       if (chartContainerRef.current) {
@@ -233,24 +381,38 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
           width: rsiContainerRef.current.clientWidth
         });
       }
+
+      if (macdContainerRef.current) {
+        macdChart.applyOptions({
+          width: macdContainerRef.current.clientWidth
+        });
+      }
     });
 
     resizeObserver.observe(chartContainerRef.current);
     resizeObserver.observe(rsiContainerRef.current);
+    resizeObserver.observe(macdContainerRef.current);
 
     return () => {
       resizeObserver.disconnect();
 
       chart.remove();
       rsiChart.remove();
+      macdChart.remove();
 
       chartRef.current = null;
       rsiChartRef.current = null;
+      macdChartRef.current = null;
+
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       sma20Ref.current = null;
       sma50Ref.current = null;
       rsiSeriesRef.current = null;
+
+      macdLineRef.current = null;
+      signalLineRef.current = null;
+      macdHistogramRef.current = null;
     };
   }, []);
 
@@ -272,7 +434,21 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
         });
       }
     }
-  }, [showSMA20, showSMA50, showVolume, showRSI]);
+
+    if (macdContainerRef.current) {
+      macdContainerRef.current.style.display = showMACD ? "block" : "none";
+
+      if (showMACD) {
+        requestAnimationFrame(() => {
+          if (macdContainerRef.current && macdChartRef.current) {
+            macdChartRef.current.applyOptions({
+              width: macdContainerRef.current.clientWidth
+            });
+          }
+        });
+      }
+    }
+  }, [showSMA20, showSMA50, showVolume, showRSI, showMACD]);
 
   useEffect(() => {
     let active = true;
@@ -357,8 +533,15 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
         sma50Ref.current?.setData(calculateSMA(uniqueCandles, 50));
         rsiSeriesRef.current?.setData(calculateRSI(uniqueCandles, 14));
 
+        const macdData = calculateMACD(uniqueCandles);
+
+        macdLineRef.current?.setData(macdData.macd);
+        signalLineRef.current?.setData(macdData.signal);
+        macdHistogramRef.current?.setData(macdData.histogram);
+
         chartRef.current?.timeScale().fitContent();
         rsiChartRef.current?.timeScale().fitContent();
+        macdChartRef.current?.timeScale().fitContent();
       } catch (err) {
         if (active) {
           setError(
@@ -438,6 +621,7 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
         {toggleButton("SMA 50", showSMA50, setShowSMA50, "text-sky-400")}
         {toggleButton("Volume", showVolume, setShowVolume, "text-green-400")}
         {toggleButton("RSI 14", showRSI, setShowRSI, "text-purple-400")}
+        {toggleButton("MACD", showMACD, setShowMACD, "text-cyan-400")}
       </div>
 
       {loading && (
@@ -458,25 +642,51 @@ function CandlestickChart({ symbol = "RELIANCE" }) {
         className="min-h-[420px] w-full"
       />
 
-      <div className="mt-6 border-t border-slate-800 pt-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold">RSI (14)</h3>
+      {showRSI && (
+        <div className="mt-6 border-t border-slate-800 pt-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold">RSI (14)</h3>
 
-          <span className="text-xs text-purple-400">
-            Momentum Indicator
-          </span>
+            <span className="text-xs text-purple-400">
+              Momentum Indicator
+            </span>
+          </div>
+
+          <div
+            ref={rsiContainerRef}
+            className="min-h-[180px] w-full"
+          />
+
+          <div className="mt-2 flex justify-between text-xs text-slate-500">
+            <span>Oversold: 30</span>
+            <span>Overbought: 70</span>
+          </div>
         </div>
+      )}
 
-        <div
-          ref={rsiContainerRef}
-          className="min-h-[180px] w-full"
-        />
+      {showMACD && (
+        <div className="mt-6 border-t border-slate-800 pt-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold">MACD (12, 26, 9)</h3>
 
-        <div className="mt-2 flex justify-between text-xs text-slate-500">
-          <span>Oversold: 30</span>
-          <span>Overbought: 70</span>
+            <div className="flex flex-wrap gap-3 text-xs">
+              <span className="text-sky-400">MACD Line</span>
+              <span className="text-amber-400">Signal Line</span>
+              <span className="text-slate-400">Histogram</span>
+            </div>
+          </div>
+
+          <div
+            ref={macdContainerRef}
+            className="min-h-[180px] w-full"
+          />
+
+          <p className="mt-2 text-xs text-slate-500">
+            MACD shows the relationship between short-term and long-term
+            exponential moving averages.
+          </p>
         </div>
-      </div>
+      )}
 
       <p className="mt-4 text-xs leading-5 text-slate-500">
         Historical data from Yahoo Finance. Data may be delayed.
