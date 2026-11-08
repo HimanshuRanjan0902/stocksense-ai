@@ -6,7 +6,10 @@ import cors from "cors";
 import { connectDB } from "./config/db.js";
 import { testGemini } from "./services/geminiService.js";
 import { getStockNews } from "./services/newsService.js";
-import { analyzeStockNewsBatch } from "./services/analysisService.js";
+import {
+  analyzeStockNewsBatch,
+  askStockAssistant
+} from "./services/analysisService.js";
 import { getStockPriceHistory } from "./services/stockPriceService.js";
 import { getMarketIndices } from "./services/marketIndexService.js";
 
@@ -82,6 +85,70 @@ app.get("/api/ai/test", async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message
+    });
+  }
+});
+
+app.post("/api/ai/assistant", protect, async (req, res) => {
+  try {
+    const question = String(req.body?.question || "").trim();
+
+    const symbol = String(req.body?.symbol || "")
+      .trim()
+      .toUpperCase();
+
+    if (!question) {
+      return res.status(400).json({
+        success: false,
+        message: "Question is required"
+      });
+    }
+
+    if (question.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        message: "Question must be under 1000 characters"
+      });
+    }
+
+    if (symbol && !isValidSymbol(symbol)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid stock symbol"
+      });
+    }
+
+    let articles = [];
+
+    if (symbol) {
+      try {
+        const newsResponse = await getStockNews(symbol);
+        articles = extractArticles(newsResponse).slice(0, 5);
+      } catch (newsError) {
+        console.error(
+          "Assistant news context error:",
+          newsError.message
+        );
+      }
+    }
+
+    const answer = await askStockAssistant({
+      question,
+      symbol,
+      articles
+    });
+
+    return res.status(200).json({
+      success: true,
+      symbol: symbol || null,
+      answer
+    });
+  } catch (error) {
+    console.error("AI assistant error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "AI assistant is temporarily unavailable"
     });
   }
 });
