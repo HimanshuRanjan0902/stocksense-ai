@@ -1,8 +1,28 @@
 
 import express from "express";
 import { getStockSymbols } from "../services/stockUniverseService.js";
+import { getStock52WeekStats } from "../services/stockPriceService.js";
 
 const router = express.Router();
+
+router.get("/52-week/:symbol", async (req, res) => {
+  try {
+    const data = await getStock52WeekStats(req.params.symbol);
+
+    return res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    console.error("52-week stats error:", error.message);
+
+    return res.status(502).json({
+      success: false,
+      message: "Unable to fetch 52-week stock statistics",
+      error: error.message
+    });
+  }
+});
 
 router.get("/", async (req, res) => {
   try {

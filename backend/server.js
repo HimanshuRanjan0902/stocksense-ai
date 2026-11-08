@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 
 import { connectDB } from "./config/db.js";
+import { startPaperPortfolioScheduler } from "./jobs/paperPortfolioScheduler.js";
 import { testGemini } from "./services/geminiService.js";
 import { getStockNews } from "./services/newsService.js";
 import {
@@ -17,11 +18,13 @@ import authRoutes from "./routes/authRoutes.js";
 import heatmapRoutes from "./routes/heatmapRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
 import { protect } from "./middleware/authMiddleware.js";
-
+import {
+  runPaperPortfolioCron
+} from "./controllers/paperPortfolioCronController.js";
 import News from "./models/News.js";
 import Portfolio from "./models/Portfolio.js";
 import Watchlist from "./models/Watchlist.js";
-
+import paperTradingRoutes from "./routes/paperTradingRoutes.js";
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -53,6 +56,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/stocks/list", stockRoutes);
 app.use("/api/stocks/heatmap", heatmapRoutes);
 
+app.use("/api/paper-trading", paperTradingRoutes);
 const extractArticles = (response) => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.articles)) return response.articles;
@@ -590,10 +594,17 @@ app.delete("/api/watchlist/:symbol", protect, async (req, res) => {
     });
   }
 });
+app.post(
+  "/api/internal/paper-portfolio-snapshots",
+  runPaperPortfolioCron
+);
+
 
 const startServer = async () => {
   try {
     await connectDB();
+
+    startPaperPortfolioScheduler();
 
     app.listen(PORT, () => {
       console.log(`StockSense AI server running on port ${PORT}`);
