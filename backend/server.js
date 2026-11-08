@@ -14,6 +14,7 @@ import { getStockPriceHistory } from "./services/stockPriceService.js";
 import { getMarketIndices } from "./services/marketIndexService.js";
 
 import authRoutes from "./routes/authRoutes.js";
+import heatmapRoutes from "./routes/heatmapRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
 import { protect } from "./middleware/authMiddleware.js";
 
@@ -50,6 +51,7 @@ app.use(express.json({ limit: "1mb" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/stocks/list", stockRoutes);
+app.use("/api/stocks/heatmap", heatmapRoutes);
 
 const extractArticles = (response) => {
   if (Array.isArray(response)) return response;
