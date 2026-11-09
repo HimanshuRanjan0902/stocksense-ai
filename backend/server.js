@@ -23,6 +23,7 @@ import {
 } from "./controllers/paperPortfolioCronController.js";
 import News from "./models/News.js";
 import Portfolio from "./models/Portfolio.js";
+import angelOneRoutes from "./routes/angelOneRoutes.js";
 import Watchlist from "./models/Watchlist.js";
 import paperTradingRoutes from "./routes/paperTradingRoutes.js";
 const app = express();
@@ -57,6 +58,7 @@ app.use("/api/stocks/list", stockRoutes);
 app.use("/api/stocks/heatmap", heatmapRoutes);
 
 app.use("/api/paper-trading", paperTradingRoutes);
+app.use("/api/angelone/quotes", angelOneRoutes);
 const extractArticles = (response) => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.articles)) return response.articles;

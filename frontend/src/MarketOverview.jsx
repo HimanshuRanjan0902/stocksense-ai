@@ -4,10 +4,13 @@ import axios from "axios";
 import {
   TrendingUp,
   TrendingDown,
-  RefreshCw
+  RefreshCw,
+  Activity
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
 function MarketOverview() {
   const [indices, setIndices] = useState([]);
@@ -52,10 +55,20 @@ function MarketOverview() {
     return () => clearInterval(interval);
   }, []);
 
+  const formatPrice = (value) => {
+    return Number(value).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-white/10 bg-[#111827] p-8 text-center text-slate-400">
-        <RefreshCw size={22} className="mx-auto mb-3 animate-spin text-cyan-400" />
+        <RefreshCw
+          size={22}
+          className="mx-auto mb-3 animate-spin text-cyan-400"
+        />
         Loading market data...
       </div>
     );
@@ -83,7 +96,15 @@ function MarketOverview() {
     <section className="grid grid-cols-1 gap-5 md:grid-cols-2">
       {indices.map((item) => {
         const data = item.data;
-        const positive = data && data.change >= 0;
+        const positive = data && Number(data.change) >= 0;
+
+        const source =
+          data?.source ||
+          item.source ||
+          "Unknown source";
+
+        const isAngelOne = source === "Angel One SmartAPI";
+        const isYahoo = source.toLowerCase().includes("yahoo");
 
         return (
           <div
@@ -98,10 +119,7 @@ function MarketOverview() {
 
                 <h2 className="mt-2 text-2xl font-bold text-white">
                   {data
-                    ? `₹${Number(data.value).toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      })}`
+                    ? `₹${formatPrice(data.value)}`
                     : "Unavailable"}
                 </h2>
               </div>
@@ -142,9 +160,38 @@ function MarketOverview() {
               </p>
             )}
 
-            <p className="mt-3 text-xs text-slate-500">
-              {data?.exchange || "Indian Market"} · Yahoo Finance
-            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">
+                {data?.exchange || "Indian Market"} · {source}
+              </p>
+
+              {data && (
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+                    isAngelOne
+                      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-400"
+                      : isYahoo
+                      ? "border-amber-400/20 bg-amber-400/10 text-amber-400"
+                      : "border-white/10 bg-white/5 text-slate-400"
+                  }`}
+                >
+                  {isAngelOne
+                    ? "Angel One"
+                    : isYahoo
+                    ? "Fallback"
+                    : "Market Data"}
+                </span>
+              )}
+            </div>
+
+            {data && (
+              <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-500">
+                <Activity size={13} />
+                {data.streaming
+                  ? "Streaming quote"
+                  : "REST quote · Not continuous streaming"}
+              </div>
+            )}
           </div>
         );
       })}

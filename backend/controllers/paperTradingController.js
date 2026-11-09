@@ -3,7 +3,15 @@ import PaperPortfolio from "../models/PaperPortfolio.js";
 import PaperTrade from "../models/PaperTrade.js";
 import { getLatestStockQuote } from "../services/stockPriceService.js";
 
-const roundMoney = (value) => Number(value.toFixed(2));
+const roundMoney = (value) => {
+  const number = Number(value || 0);
+
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  return Math.round((number + Number.EPSILON) * 100) / 100;
+};
 
 export const getPaperPortfolio = async (req, res) => {
   try {
@@ -36,7 +44,7 @@ export const getPaperPortfolio = async (req, res) => {
             holding.exchange
           );
 
-          const currentPrice = Number(quote.price);
+          const currentPrice = Number(quote?.price);
 
           if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
             throw new Error("Invalid stock quote");
@@ -66,11 +74,15 @@ export const getPaperPortfolio = async (req, res) => {
             unrealizedPnL,
             unrealizedPnLPercent,
             quote: {
-              timestamp: quote.timestamp,
-              isLive: quote.isLive,
-              isStale: quote.isStale,
-              marketState: quote.marketState,
-              source: quote.source
+              timestamp: quote.timestamp || null,
+              fetchedAt: quote.fetchedAt || null,
+              isLive: quote.isLive ?? false,
+              isStale: quote.isStale ?? true,
+              marketState: quote.marketState || "UNKNOWN",
+              quoteAgeSeconds: quote.quoteAgeSeconds ?? null,
+              source: quote.source || "Unknown",
+              freshness: quote.freshness || "unknown",
+              streaming: quote.streaming ?? false
             },
             quoteAvailable: true
           };
@@ -120,26 +132,42 @@ export const getPaperPortfolio = async (req, res) => {
       )
     );
 
+    const availableCash = roundMoney(portfolio.availableCash);
+
     const totalPortfolioValue = roundMoney(
-      portfolio.availableCash + holdingsValue
+      availableCash + holdingsValue
     );
 
-    const realizedPnL = Number(portfolio.realizedPnL || 0);
+    const realizedPnL = roundMoney(portfolio.realizedPnL || 0);
 
     const overallPnL = roundMoney(
       realizedPnL + unrealizedPnL
     );
 
+    const initialBalance = roundMoney(portfolio.initialBalance);
+
     const overallPnLPercent =
-      portfolio.initialBalance > 0
-        ? roundMoney(
-            (overallPnL / portfolio.initialBalance) * 100
-          )
+      initialBalance > 0
+        ? roundMoney((overallPnL / initialBalance) * 100)
         : 0;
 
     const hasUnavailableQuotes = holdingsWithQuotes.some(
       (holding) => !holding.quoteAvailable
     );
+
+    const hasStaleQuotes = holdingsWithQuotes.some(
+      (holding) =>
+        holding.quoteAvailable &&
+        holding.quote?.isStale
+    );
+
+    const quoteSources = [
+      ...new Set(
+        holdingsWithQuotes
+          .filter((holding) => holding.quoteAvailable)
+          .map((holding) => holding.quote.source)
+      )
+    ];
 
     return res.status(200).json({
       success: true,
@@ -149,12 +177,15 @@ export const getPaperPortfolio = async (req, res) => {
         valuation: {
           holdingsValue,
           totalCostBasis,
+          availableCash,
           totalPortfolioValue,
-          realizedPnL: roundMoney(realizedPnL),
+          realizedPnL,
           unrealizedPnL,
           overallPnL,
           overallPnLPercent,
-          hasUnavailableQuotes
+          hasUnavailableQuotes,
+          hasStaleQuotes,
+          quoteSources
         }
       }
     });
@@ -180,7 +211,9 @@ export const getPaperTradeHistory = async (req, res) => {
       Math.max(1, Number.parseInt(req.query.limit, 10) || 10)
     );
 
-    const filter = { userId: req.user._id };
+    const filter = {
+      userId: req.user._id
+    };
 
     const [trades, total] = await Promise.all([
       PaperTrade.find(filter)

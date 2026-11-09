@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -12,32 +11,47 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
     unique: true,
+    sparse: true,
     lowercase: true,
     trim: true,
-    index: true
+    default: undefined
+  },
+  phoneNumber: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    default: undefined
+  },
+  firebaseUid: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+    default: undefined
+  },
+  authProvider: {
+    type: String,
+    enum: ["password", "google", "phone", "google+phone"],
+    default: "password"
   },
   password: {
     type: String,
-    required: true,
     minlength: 8,
     select: false
   }
-}, {
-  timestamps: true
-});
+}, { timestamps: true });
 
 userSchema.pre("save", async function () {
-  if (!this.isModified("password")) return;
-
+  if (!this.isModified("password") || !this.password) return;
   this.password = await bcrypt.hash(this.password, 12);
 });
 
 userSchema.methods.comparePassword = async function (enteredPassword) {
+  if (!this.password) return false;
   return bcrypt.compare(enteredPassword, this.password);
 };
 
-const User = mongoose.model("User", userSchema);
-
+const User = mongoose.models.User || mongoose.model("User", userSchema);
 export default User;

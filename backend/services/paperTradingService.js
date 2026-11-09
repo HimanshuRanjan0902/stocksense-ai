@@ -7,8 +7,15 @@ import PaperPortfolioSnapshot from "../models/PaperPortfolioSnapshot.js";
 
 import { getLatestStockQuote } from "./stockPriceService.js";
 
-const roundMoney = (value) =>
-  Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+const roundMoney = (value) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    throw new Error("Invalid monetary value");
+  }
+
+  return Math.round((number + Number.EPSILON) * 100) / 100;
+};
 
 const getIndiaDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -29,22 +36,27 @@ const getIndiaDate = () => {
   return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
 };
 
-const savePortfolioSnapshot = async (portfolio) => {
+const savePortfolioSnapshot = async (
+  portfolio,
+  quoteOverrides = new Map()
+) => {
   try {
     let holdingsValue = 0;
     let totalCostBasis = 0;
     let quotesStale = false;
 
     for (const holding of portfolio.holdings || []) {
-      const quote = await getLatestStockQuote(
-        holding.symbol,
-        holding.exchange
-      );
+      const key = `${holding.exchange}:${holding.symbol}`;
+
+      const quote = quoteOverrides.get(key) ||
+        await getLatestStockQuote(
+          holding.symbol,
+          holding.exchange
+        );
 
       const currentPrice = Number(quote?.price);
 
       if (
-        !quote ||
         !Number.isFinite(currentPrice) ||
         currentPrice <= 0
       ) {
@@ -55,7 +67,7 @@ const savePortfolioSnapshot = async (portfolio) => {
         return false;
       }
 
-      if (quote.isStale || quote.isLive === false) {
+      if (quote.isStale === true) {
         quotesStale = true;
       }
 
@@ -135,12 +147,11 @@ export const executePaperTrade = async ({
   exchange,
   side,
   quantity,
-  executionPrice,
   simulatedFees = 0,
   orderId
 }) => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
-    throw new Error("Invalid user ID");
+    throw new Error("Invalid user");
   }
 
   const normalizedSymbol = String(symbol || "")
@@ -158,23 +169,20 @@ export const executePaperTrade = async ({
   const normalizedOrderId = String(orderId || "").trim();
 
   const tradeQuantity = Number(quantity);
-  const price = Number(executionPrice);
   const fees = Number(simulatedFees);
 
-  if (!normalizedSymbol) {
-    throw new Error("Stock symbol is required");
-  }
-
-  if (normalizedSymbol.length > 30) {
+  if (
+    !/^[A-Z0-9&.-]{1,30}$/.test(normalizedSymbol)
+  ) {
     throw new Error("Invalid stock symbol");
   }
 
   if (!["NSE", "BSE"].includes(normalizedExchange)) {
-    throw new Error("Exchange must be NSE or BSE");
+    throw new Error("Invalid exchange");
   }
 
   if (!["BUY", "SELL"].includes(normalizedSide)) {
-    throw new Error("Trade side must be BUY or SELL");
+    throw new Error("Invalid trade type");
   }
 
   if (
@@ -182,10 +190,6 @@ export const executePaperTrade = async ({
     tradeQuantity <= 0
   ) {
     throw new Error("Quantity must be a positive whole number");
-  }
-
-  if (!Number.isFinite(price) || price <= 0) {
-    throw new Error("Invalid execution price");
   }
 
   if (!Number.isFinite(fees) || fees < 0) {
@@ -196,8 +200,27 @@ export const executePaperTrade = async ({
     normalizedOrderId.length < 8 ||
     normalizedOrderId.length > 100
   ) {
-    throw new Error("Invalid order ID");
+    throw new Error("Order ID is required");
   }
+
+  const quote = await getLatestStockQuote(
+    normalizedSymbol,
+    normalizedExchange
+  );
+
+  const price = Number(quote?.price);
+
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new Error("Invalid execution price");
+  }
+
+  if (quote.isStale === true) {
+    throw new Error(
+      "Quote is stale. Paper trade cannot be executed using stale market data."
+    );
+  }
+
+  const executionPriceRounded = roundMoney(price);
 
   const session = await mongoose.startSession();
 
@@ -245,7 +268,7 @@ export const executePaperTrade = async ({
       );
 
       const grossValue = roundMoney(
-        price * tradeQuantity
+        executionPriceRounded * tradeQuantity
       );
 
       let netValue = 0;
@@ -262,7 +285,8 @@ export const executePaperTrade = async ({
           const existingCost =
             holding.averagePrice * holding.quantity;
 
-          const newCost = price * tradeQuantity;
+          const newCost =
+            executionPriceRounded * tradeQuantity;
 
           const newQuantity =
             holding.quantity + tradeQuantity;
@@ -277,7 +301,7 @@ export const executePaperTrade = async ({
             symbol: normalizedSymbol,
             exchange: normalizedExchange,
             quantity: tradeQuantity,
-            averagePrice: price
+            averagePrice: executionPriceRounded
           });
         }
 
@@ -288,17 +312,19 @@ export const executePaperTrade = async ({
 
       if (normalizedSide === "SELL") {
         if (!holding || holding.quantity < tradeQuantity) {
-          throw new Error("Insufficient shares to sell");
+          throw new Error("Insufficient stock quantity");
         }
 
         netValue = roundMoney(grossValue - fees);
 
         if (netValue < 0) {
-          throw new Error("Simulated fees exceed trade value");
+          throw new Error("Fees cannot exceed the sale value");
         }
 
         realizedPnL = roundMoney(
-          (price - holding.averagePrice) * tradeQuantity - fees
+          (executionPriceRounded - holding.averagePrice) *
+            tradeQuantity -
+            fees
         );
 
         holding.quantity -= tradeQuantity;
@@ -329,7 +355,7 @@ export const executePaperTrade = async ({
         exchange: normalizedExchange,
         side: normalizedSide,
         quantity: tradeQuantity,
-        executionPrice: price,
+        executionPrice: executionPriceRounded,
         grossValue,
         simulatedFees: fees,
         netValue,
@@ -338,12 +364,21 @@ export const executePaperTrade = async ({
       });
 
       await trade.save({ session });
-
       await portfolio.save({ session });
 
       result = {
         trade,
-        portfolio
+        portfolio,
+        quote: {
+          price: executionPriceRounded,
+          source: quote.source || "Unknown",
+          isLive: quote.isLive ?? false,
+          isStale: quote.isStale ?? false,
+          timestamp: quote.timestamp || null,
+          fetchedAt: quote.fetchedAt || null,
+          freshness: quote.freshness || "unknown",
+          streaming: quote.streaming ?? false
+        }
       };
     });
   } finally {
@@ -351,7 +386,17 @@ export const executePaperTrade = async ({
   }
 
   if (result?.portfolio) {
-    await savePortfolioSnapshot(result.portfolio);
+    const quoteOverrides = new Map([
+      [
+        `${normalizedExchange}:${normalizedSymbol}`,
+        quote
+      ]
+    ]);
+
+    await savePortfolioSnapshot(
+      result.portfolio,
+      quoteOverrides
+    );
   }
 
   return result;

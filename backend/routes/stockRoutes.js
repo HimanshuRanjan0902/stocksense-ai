@@ -1,13 +1,71 @@
 
 import express from "express";
 import { getStockSymbols } from "../services/stockUniverseService.js";
-import { getStock52WeekStats } from "../services/stockPriceService.js";
+import {
+  getStock52WeekStats,
+  getStockPriceHistory,
+  getLatestStockQuote
+} from "../services/stockPriceService.js";
 
 const router = express.Router();
 
+router.get("/quote/:symbol", async (req, res) => {
+  try {
+    const exchange = String(
+      req.query.exchange || "NSE"
+    ).toUpperCase();
+
+    const data = await getLatestStockQuote(
+      req.params.symbol,
+      exchange
+    );
+
+    return res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    console.error("Stock quote error:", error.message);
+
+    return res.status(502).json({
+      success: false,
+      message: "Unable to fetch stock quote",
+      error: error.message
+    });
+  }
+});
+
+router.get("/history/:symbol", async (req, res) => {
+  try {
+    const period = String(
+      req.query.period || "1M"
+    ).toUpperCase();
+
+    const data = await getStockPriceHistory(
+      req.params.symbol,
+      period
+    );
+
+    return res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    console.error("Stock history error:", error.message);
+
+    return res.status(502).json({
+      success: false,
+      message: "Unable to fetch stock history",
+      error: error.message
+    });
+  }
+});
+
 router.get("/52-week/:symbol", async (req, res) => {
   try {
-    const data = await getStock52WeekStats(req.params.symbol);
+    const data = await getStock52WeekStats(
+      req.params.symbol
+    );
 
     return res.status(200).json({
       success: true,
@@ -26,7 +84,9 @@ router.get("/52-week/:symbol", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const exchange = String(req.query.exchange || "both").toLowerCase();
+    const exchange = String(
+      req.query.exchange || "both"
+    ).toLowerCase();
 
     if (!["nse", "bse", "both"].includes(exchange)) {
       return res.status(400).json({

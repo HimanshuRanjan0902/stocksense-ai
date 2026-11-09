@@ -2,7 +2,14 @@ node_modules/
 .env
 .env.*
 !.env.example
+
 dist/
 build/
 *.log
 .DS_Store
+
+*.zip
+
+serviceAccountKey.json
+firebase-service-account.json
+*service-account*.json

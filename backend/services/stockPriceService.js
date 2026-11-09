@@ -1,4 +1,7 @@
 
+import { getAngelOneQuote } from "./angelOneService.js";
+import { getAngelOneStockToken } from "./angelOneInstrumentService.js";
+
 const ranges = {
   "1D": { range: "1d", interval: "5m" },
   "1W": { range: "5d", interval: "15m" },
@@ -75,7 +78,8 @@ const parseChartData = (chart) => {
 };
 
 const getYahooChart = async (ticker, selectedRange) => {
-  const baseUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`;
+  const baseUrl =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`;
 
   const url = new URL(baseUrl);
 
@@ -88,6 +92,7 @@ const getYahooChart = async (ticker, selectedRange) => {
 
   if (data.length <= 1 && selectedRange.days) {
     const fallbackUrl = new URL(baseUrl);
+
     const now = Math.floor(Date.now() / 1000);
     const period1 = now - selectedRange.days * 24 * 60 * 60;
 
@@ -103,25 +108,32 @@ const getYahooChart = async (ticker, selectedRange) => {
   return { chart, data };
 };
 
-export const getStockPriceHistory = async (
-  symbol,
-  period = "1M"
-) => {
+const getValidatedStock = (symbol) => {
   const stock = String(symbol || "").trim().toUpperCase();
-  const selectedRange = ranges[period];
 
   if (!/^[A-Z0-9&.-]{1,30}$/.test(stock)) {
     throw new Error("Invalid stock symbol");
   }
 
-  if (!selectedRange) {
-    throw new Error("Invalid chart period");
+  return stock;
+};
+
+const getTicker = (stock, exchange) => {
+  if (stock.endsWith(".NS") || stock.endsWith(".BO")) {
+    return stock;
   }
 
+  return `${stock}.${exchange === "BSE" ? "BO" : "NS"}`;
+};
+
+const getHistoricalData = async (stock, selectedRange) => {
   const isBSE = stock.endsWith(".BO");
   const isNSE = stock.endsWith(".NS");
 
-  const ticker = isBSE || isNSE ? stock : `${stock}.NS`;
+  const ticker = getTicker(
+    stock,
+    isBSE ? "BSE" : "NSE"
+  );
 
   let { chart, data } = await getYahooChart(ticker, selectedRange);
 
@@ -130,10 +142,12 @@ export const getStockPriceHistory = async (
   let isFallback = false;
 
   if (isBSE && data.length <= 1) {
-    const nseTicker = `${stock.replace(/\.BO$/, "")}.NS`;
+    const cleanSymbol = stock.replace(/\.BO$/, "");
+    const nseTicker = `${cleanSymbol}.NS`;
 
     try {
       const nseResult = await getYahooChart(nseTicker, selectedRange);
+
       const nseSymbol = nseResult.chart?.meta?.symbol;
       const nseExchange = String(
         nseResult.chart?.meta?.exchangeName || ""
@@ -155,73 +169,60 @@ export const getStockPriceHistory = async (
     }
   }
 
+  return {
+    chart,
+    data,
+    ticker,
+    exchange: isBSE ? "BSE" : isNSE ? "NSE" : "NSE",
+    dataSourceTicker,
+    dataSourceExchange,
+    isFallback
+  };
+};
+
+export const getStockPriceHistory = async (
+  symbol,
+  period = "1M"
+) => {
+  const stock = getValidatedStock(symbol);
+  const selectedRange = ranges[period];
+
+  if (!selectedRange) {
+    throw new Error("Invalid chart period");
+  }
+
+  const result = await getHistoricalData(stock, selectedRange);
+
   console.log(
-    `Yahoo Finance: ${ticker} | ${period} | ${data.length} records | Source: ${dataSourceTicker}`
+    `Yahoo Finance: ${result.ticker} | ${period} | ${result.data.length} records | Source: ${result.dataSourceTicker}`
   );
 
   return {
     symbol: stock.replace(/\.(BO|NS)$/, ""),
-    ticker,
-    exchange: isBSE ? "BSE" : "NSE",
+    ticker: result.ticker,
+    exchange: result.exchange,
     period,
     currency: "INR",
-    totalRecords: data.length,
-    dataSourceTicker,
-    dataSourceExchange,
-    isFallback,
-    historicalDataAvailable: data.length > 1 || period === "1D",
-    data
+    totalRecords: result.data.length,
+    dataSourceTicker: result.dataSourceTicker,
+    dataSourceExchange: result.dataSourceExchange,
+    isFallback: result.isFallback,
+    historicalDataAvailable:
+      result.data.length > 1 || period === "1D",
+    data: result.data
   };
 };
 
 export const getStock52WeekStats = async (symbol) => {
-  const stock = String(symbol || "").trim().toUpperCase();
-
-  if (!/^[A-Z0-9&.-]{1,30}$/.test(stock)) {
-    throw new Error("Invalid stock symbol");
-  }
-
-  const isBSE = stock.endsWith(".BO");
-  const isNSE = stock.endsWith(".NS");
-
-  const ticker = isBSE || isNSE ? stock : `${stock}.NS`;
+  const stock = getValidatedStock(symbol);
 
   const selectedRange = {
     range: "1y",
     interval: "1d"
   };
 
-  let { chart, data } = await getYahooChart(ticker, selectedRange);
-
-  let dataSourceTicker = ticker;
-  let dataSourceExchange = isBSE ? "BSE" : "NSE";
-  let isFallback = false;
-
-  if (isBSE && data.length <= 1) {
-    const nseTicker = `${stock.replace(/\.BO$/, "")}.NS`;
-
-    try {
-      const nseResult = await getYahooChart(nseTicker, selectedRange);
-      const nseSymbol = nseResult.chart?.meta?.symbol;
-      const nseExchange = String(
-        nseResult.chart?.meta?.exchangeName || ""
-      ).toUpperCase();
-
-      if (
-        nseSymbol === nseTicker &&
-        (nseExchange.includes("NSE") || nseExchange.includes("NSI")) &&
-        nseResult.data.length > 1
-      ) {
-        chart = nseResult.chart;
-        data = nseResult.data;
-        dataSourceTicker = nseTicker;
-        dataSourceExchange = "NSE";
-        isFallback = true;
-      }
-    } catch (error) {
-      console.error("NSE 52-week fallback failed:", error.message);
-    }
-  }
+  const result = await getHistoricalData(stock, selectedRange);
+  const data = result.data;
 
   if (data.length === 0) {
     throw new Error("No 52-week historical data available");
@@ -239,7 +240,7 @@ export const getStock52WeekStats = async (symbol) => {
 
   return {
     symbol: stock.replace(/\.(BO|NS)$/, ""),
-    ticker,
+    ticker: result.ticker,
     currency: "INR",
     currentPrice: Number(currentPrice.toFixed(2)),
     high52Week: Number(highest.toFixed(2)),
@@ -247,22 +248,22 @@ export const getStock52WeekStats = async (symbol) => {
     distanceFromHigh: Number(distanceFromHigh.toFixed(2)),
     distanceFromLow: Number(distanceFromLow.toFixed(2)),
     totalRecords: data.length,
-    dataSourceTicker,
-    dataSourceExchange,
-    isFallback,
+    dataSourceTicker: result.dataSourceTicker,
+    dataSourceExchange: result.dataSourceExchange,
+    isFallback: result.isFallback,
     dataStartDate: data[0].date,
     dataEndDate: data[data.length - 1].date
   };
 };
 
-
-export const getLatestStockQuote = async (symbol, exchange = "NSE") => {
-  const stock = String(symbol || "").trim().toUpperCase();
-  const selectedExchange = String(exchange || "").trim().toUpperCase();
-
-  if (!/^[A-Z0-9&.-]{1,30}$/.test(stock)) {
-    throw new Error("Invalid stock symbol");
-  }
+export const getLatestStockQuote = async (
+  symbol,
+  exchange = "NSE"
+) => {
+  const stock = getValidatedStock(symbol);
+  const selectedExchange = String(exchange || "NSE")
+    .trim()
+    .toUpperCase();
 
   if (!["NSE", "BSE"].includes(selectedExchange)) {
     throw new Error("Invalid exchange");
@@ -276,63 +277,126 @@ export const getLatestStockQuote = async (symbol, exchange = "NSE") => {
   }
 
   const cleanSymbol = stock.replace(/\.(NS|BO)$/, "");
-  const ticker = stock.endsWith(".NS") || stock.endsWith(".BO")
-    ? stock
-    : `${cleanSymbol}.${selectedExchange === "BSE" ? "BO" : "NS"}`;
+  const ticker = getTicker(stock, selectedExchange);
 
-  const selectedRange = {
-    range: "1d",
-    interval: "1m"
-  };
+  try {
+    const instrument = await getAngelOneStockToken(
+      cleanSymbol,
+      selectedExchange
+    );
 
-  const { chart, data } = await getYahooChart(ticker, selectedRange);
+    const result = await getAngelOneQuote(
+      instrument.exchange,
+      instrument.token
+    );
 
-  if (!chart) {
-    throw new Error("Stock quote is currently unavailable");
+    const quote = result?.fetched?.find(
+      (item) =>
+        String(item.symbolToken) === String(instrument.token)
+    );
+
+    const price = Number(quote?.ltp);
+
+    if (quote && Number.isFinite(price) && price > 0) {
+      return {
+        symbol: cleanSymbol,
+        exchange: selectedExchange,
+        ticker,
+        price: Number(price.toFixed(2)),
+        currency: "INR",
+        timestamp: null,
+        fetchedAt: new Date().toISOString(),
+        marketState: "UNKNOWN",
+        quoteAgeSeconds: null,
+        isLive: false,
+        isStale: false,
+        freshness: "unknown",
+        source: "Angel One SmartAPI",
+        streaming: false
+      };
+    }
+
+    throw new Error("Angel One returned no valid quote");
+  } catch (error) {
+    console.error(
+      `Angel One quote failed for ${cleanSymbol} (${selectedExchange}):`,
+      error.message
+    );
   }
 
-  const meta = chart.meta || {};
+  try {
+    const selectedRange = {
+      range: "1d",
+      interval: "1m"
+    };
 
-  const marketPrice = Number(meta.regularMarketPrice);
-  const lastCandle = data[data.length - 1];
+    const { chart, data } = await getYahooChart(
+      ticker,
+      selectedRange
+    );
 
-  const price = Number.isFinite(marketPrice) && marketPrice > 0
-    ? marketPrice
-    : lastCandle?.close;
+    if (!chart) {
+      throw new Error("Stock quote is currently unavailable");
+    }
 
-  if (!Number.isFinite(price) || price <= 0) {
-    throw new Error("No valid stock price available");
+    const meta = chart.meta || {};
+    const marketPrice = Number(meta.regularMarketPrice);
+    const lastCandle = data[data.length - 1];
+
+    const price =
+      Number.isFinite(marketPrice) && marketPrice > 0
+        ? marketPrice
+        : lastCandle?.close;
+
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error("No valid stock price available");
+    }
+
+    const quoteTimestamp =
+      Number(meta.regularMarketTime) ||
+      lastCandle?.timestamp ||
+      null;
+
+    const marketState = meta.marketState || "UNKNOWN";
+
+    const quoteAgeSeconds = quoteTimestamp
+      ? Math.max(
+          0,
+          Math.floor(Date.now() / 1000 - quoteTimestamp)
+        )
+      : null;
+
+    const isStale =
+      marketState !== "REGULAR" ||
+      quoteAgeSeconds === null ||
+      quoteAgeSeconds > 900;
+
+    return {
+      symbol: cleanSymbol,
+      exchange: selectedExchange,
+      ticker,
+      price: Number(price.toFixed(2)),
+      currency: "INR",
+      timestamp: quoteTimestamp
+        ? new Date(quoteTimestamp * 1000).toISOString()
+        : null,
+      fetchedAt: new Date().toISOString(),
+      marketState,
+      quoteAgeSeconds,
+      isLive: false,
+      isStale,
+      freshness: isStale ? "stale" : "delayed",
+      source: "Yahoo Finance",
+      streaming: false
+    };
+  } catch (error) {
+    console.error(
+      `Yahoo Finance fallback failed for ${cleanSymbol}:`,
+      error.message
+    );
+
+    throw new Error(
+      `Unable to fetch ${cleanSymbol} quote from Angel One or Yahoo Finance`
+    );
   }
-
-  const quoteTimestamp =
-    Number(meta.regularMarketTime) ||
-    lastCandle?.timestamp ||
-    null;
-
-  const marketState = meta.marketState || "UNKNOWN";
-
-  const quoteAgeSeconds = quoteTimestamp
-    ? Math.max(0, Math.floor(Date.now() / 1000 - quoteTimestamp))
-    : null;
-
-  const isStale =
-    marketState !== "REGULAR" ||
-    quoteAgeSeconds === null ||
-    quoteAgeSeconds > 900;
-
-  return {
-    symbol: cleanSymbol,
-    exchange: selectedExchange,
-    ticker,
-    price: Number(price.toFixed(2)),
-    currency: "INR",
-    timestamp: quoteTimestamp
-      ? new Date(quoteTimestamp * 1000).toISOString()
-      : null,
-    marketState,
-    quoteAgeSeconds,
-    isLive: false,
-    isStale,
-    source: "Yahoo Finance"
-  };
 };
